@@ -1,0 +1,55 @@
+import bpy  # type: ignore[import]
+
+# Tolerância para a variação de conversão de cor (0.0 a 1.0)
+TOLERANCE = 0.2
+
+# Valores RGB equivalentes aos seus CMYK 100%
+COLORS = {
+    "MDF": (0.0, 0.0, 0.0),       # Preto (K=100)
+    "Amarelo_Acrilico": (1.0, 1.0, 0.0), # Amarelo (Y=100)
+    "Magenta_Adesivo": (1.0, 0.0, 1.0)   # Magenta (M=100)
+}
+
+def colors_match(c1, c2, tolerance=TOLERANCE):
+    # Compara os canais R, G e B (ignorando a transparência no índice 3)
+    return all(abs(c1[i] - c2[i]) <= tolerance for i in range(3))
+
+def rename_svg_by_color():
+    # Pega apenas as curvas (SVG) que estão selecionadas na cena
+    selected_curves = [obj for obj in bpy.context.selected_objects if obj.type == 'CURVE']
+    
+    if not selected_curves:
+        print("Nenhuma curva selecionada. Selecione os arquivos SVG na viewport e tente novamente.")
+        return
+
+    count = 0
+    for obj in selected_curves:
+        # Se o objeto não tiver material, pula para o próximo
+        if not obj.data.materials:
+            continue
+            
+        mat = obj.data.materials[0]
+        base_color = None
+        
+        # O Blender moderno usa nodes para materiais importados de SVG
+        if mat.use_nodes:
+            principled = next((n for n in mat.node_tree.nodes if n.type == 'BSDF_PRINCIPLED'), None)
+            if principled:
+                base_color = principled.inputs['Base Color'].default_value
+        
+        # Fallback caso não esteja usando nodes
+        if not base_color:
+            base_color = mat.diffuse_color
+            
+        if base_color:
+            # Compara a cor do objeto com as cores definidas
+            for material_name, rgb_target in COLORS.items():
+                if colors_match(base_color, rgb_target):
+                    obj.name = material_name
+                    count += 1
+                    break
+                    
+    print(f"Processo concluído! {count} peças renomeadas.")
+
+# Executa a função
+rename_svg_by_color()
