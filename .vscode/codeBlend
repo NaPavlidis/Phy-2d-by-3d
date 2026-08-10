@@ -1,5 +1,4 @@
-import bpy  # type: ignore[import]
-
+import bpy
 # Tolerância para a variação de conversão de cor (0.0 a 1.0)
 TOLERANCE = 0.2
 
