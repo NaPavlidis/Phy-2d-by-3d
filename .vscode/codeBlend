@@ -1,5 +1,7 @@
+import bpy
 import xml.etree.ElementTree as ET
 import re
+import os
 
 REGRAS_MATERIAIS = {
     "#FEFEFE": { 
@@ -21,7 +23,6 @@ REGRAS_MATERIAIS = {
         'transmission': 0.0
     }
 }
- # --- FUNÇÃO DE CONVERSÃO DE COR ---
 
 def extrair_cores_svg_avancado(caminho_arquivo):
     try:
@@ -99,6 +100,8 @@ def extrair_cores_svg_avancado(caminho_arquivo):
             
     return dados_objetos
 
+ # --- FUNÇÃO DE CONVERSÃO DE COR ---
+
 def hex_para_rgba(hex_color, alpha=1.0):
     """Converte cor Hex (ex: #ff0000) para Linear RGBA usado no Blender."""
     if not hex_color or not hex_color.startswith('#'):
@@ -115,11 +118,13 @@ def hex_para_rgba(hex_color, alpha=1.0):
         else: return ((c + 0.055) / 1.055) ** 2.4
         
     return (srgb_para_linear(r), srgb_para_linear(g), srgb_para_linear(b), alpha)
+
+
 def aplicar_material_por_cor(obj, cor_preenchimento, cor_contorno):
     # Padroniza a cor do contorno para minúsculo para evitar erros na busca
     cor_chave = cor_contorno.lower() if cor_contorno else ''
-    
-    # Busca as regras no dicionário. Se a cor não existir lá, usa uma regra padrão (Fallback)
+
+
     regra = REGRAS_MATERIAIS.get(cor_chave, {
         'nome_material': 'Desconhecido',
         'extrusao': 0.001,
@@ -134,32 +139,33 @@ caminho_do_seu_svg = r"F:\\Backup Aroni 29-05-2021\\Publico\\2026\\3d\\arquivos\
 cores_encontradas = extrair_cores_svg_avancado(caminho_do_seu_svg)
 
 print("\n--- Analisando o SVG ---")
+
 for obj in cores_encontradas:
     print(f"Objeto: {obj['id']} | Tipo: {obj['tipo']}")
     print(f"  -> Preenchimento (Cor): {obj['preenchimento']}")
     print(f"  -> Contorno (Material): {obj['contorno']}\n")
 
- # Aplica a extrusão (espessura 3D) na curva
-obj.data.extrude = regra['extrusao']
+    obj.data.extrude = regra['extrusao']
 
     # Limpa materiais antigos e cria o novo
-obj.data.materials.clear()
-mat = bpy.data.materials.new(name=f"Mat_{regra['nome_material']}_{obj.name}")
-mat.use_nodes = True
-bsdf = mat.node_tree.nodes.get("Principled BSDF")
+    obj.data.materials.clear()
+    mat = bpy.data.materials.new(name=f"Mat_{regra['nome_material']}_{obj.name}")
+    mat.use_nodes = True
+    bsdf = mat.node_tree.nodes.get("Principled BSDF")
 
-    # Aplica a cor do preenchimento no Base Color
-if cor_preenchimento != 'Nenhum':
-    rgba = hex_para_rgba(cor_preenchimento)
-    bsdf.inputs['Base Color'].default_value = rgba
+        # Aplica a cor do preenchimento no Base Color
+    if cor_preenchimento != 'Nenhum':
+        rgba = hex_para_rgba(cor_preenchimento)
+        bsdf.inputs['Base Color'].default_value = rgba
 
-    # Aplica as propriedades do material baseadas no Dicionário
-    bsdf.inputs['Roughness'].default_value = regra['roughness']
-    
-    # Compatibilidade de versão do Blender para o Transmission (Acrílico/Vidro)
-    if 'Transmission Weight' in bsdf.inputs: # Blender 4.0+
-        bsdf.inputs['Transmission Weight'].default_value = regra['transmission']
-    elif 'Transmission' in bsdf.inputs:      # Blender 3.6 e anteriores
-        bsdf.inputs['Transmission'].default_value = regra['transmission']
+        # Aplica as propriedades do material baseadas no Dicionário
+        bsdf.inputs['Roughness'].default_value = regra['roughness']
+        
+        # Compatibilidade de versão do Blender para o Transmission (Acrílico/Vidro)
+        if 'Transmission Weight' in bsdf.inputs: # Blender 4.0+
+            bsdf.inputs['Transmission Weight'].default_value = regra['transmission']
+        elif 'Transmission' in bsdf.inputs:      # Blender 3.6 e anteriores
+            bsdf.inputs['Transmission'].default_value = regra['transmission']
 
-obj.data.materials.append(mat)
+    obj.data.materials.append(mat)
+    # Aplica a extrusão (espessura 3D) na curva
