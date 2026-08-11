@@ -5,19 +5,19 @@ import os
 
 # --- 1. REGRAS DE MATERIAIS (BASEADO NO CONTORNO) ---
 REGRAS_MATERIAIS = {    
-    '#ED3237': { 
+    '#ed3237': { 
         'nome_material': 'Acrilico',
         'extrusao': 0.001,      # 1mm (Blender faz para os dois lados = 2mm)
         'roughness': 0.05,      # Bem liso e reflexivo
         'transmission': 1.0     # Transparente
     },
-    '#FEFEFE': { 
+    '#fefefe': { 
         'nome_material': 'MDF',
-        'extrusao': 0.03,     # 1.5mm (Blender faz para os dois lados = 3mm)
+        'extrusao': 0.003,     # 1.5mm (Blender faz para os dois lados = 3mm)
         'roughness': 0.9,       # Fosco
         'transmission': 0.0     # Opaco
     },
-    '#EC268F': { 
+    '#ec268F': { 
         'nome_material': 'Adesivo',
         'extrusao': 0.00005,    # Espessura de papel/adesivo
         'roughness': 0.4,       # Leve brilho
@@ -118,17 +118,19 @@ def automatizar_trofeu_svg(caminho_svg):
     
     # Colocando os itens da lista na mesma ondem
     for nome_base, dados in dados_extraidos.items():
-        print('orden de entrada nº', list(dados_extraidos.keys()).index(nome_base) + 1, ':', nome_base, dados)
+        print('ordem de entrada nº', list(dados_extraidos.keys()).index(nome_base) + 1, ':', nome_base, dados)
         # Encontra o objeto correspondente no Blender
         obj = next((o for o in objetos_importados if o.name.split('.')[0] == nome_base), None)
         
         if not obj: continue
         cor_contorno = dados['contorno'].lower() if dados['contorno'] != 'Nenhum' else ''
+       
         regra = REGRAS_MATERIAIS.get(cor_contorno, {
-            'nome_material': 'Padrao', 'espessura': 0.001, 'roughness': 0.5, 'transmission': 0.0
+            'nome_material': 'não encontrado', 'extrusao': 0.001, 'roughness': 0.5, 'transmission': 0.0
         })
 
-        espessura = regra['espessura']
+        print('a regra é ', regra)
+        espessura = regra['extrusao']
 
         # 1. Posicionar no eixo Z para não encavalar
         obj.location[2] = altura_z_atual
@@ -160,7 +162,7 @@ def automatizar_trofeu_svg(caminho_svg):
         elif 'Transmission' in bsdf.inputs: bsdf.inputs['Transmission'].default_value = regra['transmission']
 
         obj.data.materials.append(mat)
-            
+            ''
     # Limpeza final
     if os.path.exists(caminho_temp):
         os.remove(caminho_temp)
