@@ -3,169 +3,138 @@ import xml.etree.ElementTree as ET
 import re
 import os
 
-REGRAS_MATERIAIS = {
-    "#FEFEFE": { 
+# --- 1. REGRAS DE MATERIAIS (BASEADO NO CONTORNO) ---
+REGRAS_MATERIAIS = {    
+    '#ffff00': { 
+        'nome_material': 'Acrilico',
+        'extrusao': 0.001,      # 1mm (Blender faz para os dois lados = 2mm)
+        'roughness': 0.05,      # Bem liso e reflexivo
+        'transmission': 1.0     # Transparente
+    },
+    '#ffffff': { 
         'nome_material': 'MDF',
-        'extrusao': 0.003,      # 1mm (Nota: o Blender extrude pros dois lados, gerando 2mm total)
-        'roughness': 0.05,      # Quase zero = bem reflexivo/liso
-        'transmission': 1.0     # 1.0 = 100% transparente (como vidro/acrílico)
+        'extrusao': 0.0015,     # 1.5mm (Blender faz para os dois lados = 3mm)
+        'roughness': 0.9,       # Fosco
+        'transmission': 0.0     # Opaco
     },
-    "#EC268F": { 
-        'nome_material': 'ACRILICO',
-        'extrusao': 0.0015,     # 1.5mm (gerando 3mm total)
-        'roughness': 0.9,       # Alto = bem fosco
-        'transmission': 0.0     # 0.0 = totalmente sólido/opaco
-    },
-    '#EC268F': { 
-        'nome_material': 'ADESIVO',
-        'extrusao': 0.0003,    # Espessura mínima (como um papel/adesivo)
-        'roughness': 0.4,       # Meio termo, leve brilho
-        'transmission': 0.0
+    '#ff00ff': { 
+        'nome_material': 'Adesivo',
+        'extrusao': 0.00005,    # Espessura de papel/adesivo
+        'roughness': 0.4,       # Leve brilho
+        'transmission': 0.0     # Opaco
     }
 }
 
-def extrair_cores_svg_avancado(caminho_arquivo):
-    try:
-        tree = ET.parse(caminho_arquivo)
-        root = tree.getroot()
-    except Exception as e:
-        print(f"Erro ao ler o arquivo SVG: {e}")
-        return []
-
-    # 1. Mapear classes CSS dentro das tags <style> (Muito comum no Illustrator e Corel)
-    css_classes = {}
-    for elem in root.iter():
-        tag_nome = elem.tag.split('}')[-1]
-        if tag_nome == 'style' and elem.text:
-            # Encontra padrões como: .cls-1 { fill: #ff0000; stroke: #000000; }
-            matches = re.finditer(r'\.([a-zA-Z0-9_\-]+)\s*\{([^}]+)\}', elem.text)
-            for m in matches:
-                nome_classe = m.group(1)
-                propriedades = m.group(2)
-                
-                # \b garante que pegue 'stroke:' e não 'stroke-width:'
-                # [^;}] pega tudo até o ponto e vírgula ou fechamento da chave
-                fill_m = re.search(r'\bfill\s*:\s*([^;}]+)', propriedades)
-                stroke_m = re.search(r'\bstroke\s*:\s*([^;}]+)', propriedades)
-                
-                css_classes[nome_classe] = {
-                    'fill': fill_m.group(1).strip() if fill_m and fill_m.group(1).strip() != 'none' else None,
-                    'stroke': stroke_m.group(1).strip() if stroke_m and stroke_m.group(1).strip() != 'none' else None
-                }
-
-    dados_objetos = []
-
-    # 2. Iterar sobre os elementos do SVG
-    for elem in root.iter():
-        tag = elem.tag.split('}')[-1] 
-        
-        if tag in ['g', 'svg', 'defs', 'style']:
-            continue
-
-        id_obj = elem.get('id', 'Objeto_sem_nome')
-        
-        # Pega atributos diretos primeiro
-        fill = elem.get('fill')
-        stroke = elem.get('stroke')
-        
-        # 3. Verifica se o objeto usa alguma classe CSS (ex: class="cls-1")
-        classes_obj = elem.get('class', '').split()
-        for cls in classes_obj:
-            if cls in css_classes:
-                if css_classes[cls]['fill']: fill = css_classes[cls]['fill']
-                if css_classes[cls]['stroke']: stroke = css_classes[cls]['stroke']
-
-        # 4. Verifica se o objeto tem estilo "inline" (sobrescreve a classe)
-        style = elem.get('style', '')
-        if style:
-            fill_m = re.search(r'\bfill\s*:\s*([^;}]+)', style)
-            stroke_m = re.search(r'\bstroke\s*:\s*([^;}]+)', style)
-            
-            if fill_m and fill_m.group(1).strip() != 'none': 
-                fill = fill_m.group(1).strip()
-            if stroke_m and stroke_m.group(1).strip() != 'none': 
-                stroke = stroke_m.group(1).strip()
-
-        # Filtra os vazios explícitos ("none") que podem vir dos atributos diretos
-        if fill == 'none': fill = None
-        if stroke == 'none': stroke = None
-
-        if fill or stroke:
-            dados_objetos.append({
-                'id': id_obj,
-                'tipo': tag,
-                'preenchimento': fill if fill else 'Nenhum',
-                'contorno': stroke if stroke else 'Nenhum'
-            })
-            
-    return dados_objetos
-
- # --- FUNÇÃO DE CONVERSÃO DE COR ---
-
+# --- 2. FUNÇÃO DE CONVERSÃO DE COR ---
 def hex_para_rgba(hex_color, alpha=1.0):
-    """Converte cor Hex (ex: #ff0000) para Linear RGBA usado no Blender."""
+    """Converte cor Hex do SVG para o Linear RGBA do Blender."""
     if not hex_color or not hex_color.startswith('#'):
         return (1.0, 1.0, 1.0, alpha)
-        
-    hex_color = hex_color.lstrip('#').lower()
     
+    hex_color = hex_color.lstrip('#').lower()
     r = int(hex_color[0:2], 16) / 255.0
     g = int(hex_color[2:4], 16) / 255.0
     b = int(hex_color[4:6], 16) / 255.0
     
     def srgb_para_linear(c):
-        if c <= 0.04045: return c / 12.92
-        else: return ((c + 0.055) / 1.055) ** 2.4
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
         
     return (srgb_para_linear(r), srgb_para_linear(g), srgb_para_linear(b), alpha)
 
-
-def aplicar_material_por_cor(obj, cor_preenchimento, cor_contorno):
-    # Padroniza a cor do contorno para minúsculo para evitar erros na busca
-    cor_chave = cor_contorno.lower() if cor_contorno else ''
-
-
-    regra = REGRAS_MATERIAIS.get(cor_chave, {
-        'nome_material': 'Desconhecido',
-        'extrusao': 0.001,
-        'roughness': 0.5,
-        'transmission': 0.0
-    })
-
-   
-# --- TESTE O SCRIPT AQUI ---
-caminho_do_seu_svg = r"F:\\Backup Aroni 29-05-2021\\Publico\\2026\\3d\\arquivos\\teste.svg" 
-
-cores_encontradas = extrair_cores_svg_avancado(caminho_do_seu_svg)
-
-print("\n--- Analisando o SVG ---")
-
-for obj in cores_encontradas:
-    print(f"Objeto: {obj['id']} | Tipo: {obj['tipo']}")
-    print(f"  -> Preenchimento (Cor): {obj['preenchimento']}")
-    print(f"  -> Contorno (Material): {obj['contorno']}\n")
-
-    obj.data.extrude = regra['extrusao']
-
-    # Limpa materiais antigos e cria o novo
-    obj.data.materials.clear()
-    mat = bpy.data.materials.new(name=f"Mat_{regra['nome_material']}_{obj.name}")
-    mat.use_nodes = True
-    bsdf = mat.node_tree.nodes.get("Principled BSDF")
-
-        # Aplica a cor do preenchimento no Base Color
-    if cor_preenchimento != 'Nenhum':
-        rgba = hex_para_rgba(cor_preenchimento)
-        bsdf.inputs['Base Color'].default_value = rgba
-
-        # Aplica as propriedades do material baseadas no Dicionário
-        bsdf.inputs['Roughness'].default_value = regra['roughness']
+# --- 3. PIPELINE PRINCIPAL DE INSTANCIAÇÃO ---
+def automatizar_trofeu_svg(caminho_svg):
+    ET.register_namespace('', "http://www.w3.org/2000/svg")
+    try:
+        tree = ET.parse(caminho_svg)
+        root = tree.getroot()
+    except Exception as e:
+        print(f"Erro ao ler SVG: {e}")
+        return
+    
+    dados_extraidos = {}
+    contador = 1
+    
+    # PASSO A: Ler o SVG e salvar as cores antes de instanciar
+    for elem in root.iter():
+        tag = elem.tag.split('}')[-1]
+        if tag in ['g', 'svg', 'defs', 'style']: continue
+            
+        id_obj = elem.get('id')
+        if not id_obj:
+            id_obj = f"trofeu_shape_{contador}"
+            elem.set('id', id_obj)
+        contador += 1
         
-        # Compatibilidade de versão do Blender para o Transmission (Acrílico/Vidro)
-        if 'Transmission Weight' in bsdf.inputs: # Blender 4.0+
-            bsdf.inputs['Transmission Weight'].default_value = regra['transmission']
-        elif 'Transmission' in bsdf.inputs:      # Blender 3.6 e anteriores
-            bsdf.inputs['Transmission'].default_value = regra['transmission']
+        style = elem.get('style', '')
+        fill = elem.get('fill', None)
+        stroke = elem.get('stroke', None)
+        
+        if style:
+            fill_match = re.search(r'fill:\s*([^;]+)', style)
+            stroke_match = re.search(r'stroke:\s*([^;]+)', style)
+            if fill_match and fill_match.group(1) != 'none': fill = fill_match.group(1).strip()
+            if stroke_match and stroke_match.group(1) != 'none': stroke = stroke_match.group(1).strip()
+        
+        if fill or stroke:
+            dados_extraidos[id_obj] = {
+                'preenchimento': fill if fill else 'Nenhum',
+                'contorno': stroke if stroke else 'Nenhum'
+            }
+        
+        # Limpa os strokes para o Blender não duplicar o objeto na importação
+        if 'stroke' in elem.attrib: del elem.attrib['stroke']
+        if 'stroke-width' in elem.attrib: del elem.attrib['stroke-width']
+        if style:
+            elem.set('style', re.sub(r'stroke-[^;]+;?|stroke:[^;]+;?', '', style))
+            
+    # PASSO B: Salvar temporário limpo e instanciar no Blender
+    caminho_temp = os.path.join(os.path.dirname(caminho_svg), "temp_import.svg")
+    tree.write(caminho_temp)
+    
+    bpy.ops.object.select_all(action='DESELECT')
+    bpy.ops.import_curve.svg(filepath=caminho_temp) # <-- AQUI ELE INSTANCIA O SVG!
+    
+    # PASSO C: Aplicar as regras 3D e Materiais nos objetos instanciados
+    for obj in bpy.context.selected_objects:
+        nome_base = obj.name.split('.')[0] 
+        
+        if nome_base in dados_extraidos:
+            dados = dados_extraidos[nome_base]
+            cor_contorno = dados['contorno'].lower() if dados['contorno'] != 'Nenhum' else ''
+            
+            # Pega as configurações do dicionário
+            regra = REGRAS_MATERIAIS.get(cor_contorno, {
+                'nome_material': 'Padrao', 'extrusao': 0.001, 'roughness': 0.5, 'transmission': 0.0
+            })
 
-    obj.data.materials.append(mat)
-    # Aplica a extrusão (espessura 3D) na curva
+            # Transforma em 3D (Extrusão)
+            obj.data.extrude = regra['extrusao']
+
+            # Configura o Material
+            obj.data.materials.clear()
+            mat = bpy.data.materials.new(name=f"Mat_{regra['nome_material']}_{nome_base}")
+            mat.use_nodes = True
+            bsdf = mat.node_tree.nodes.get("Principled BSDF")
+
+            # Cor de preenchimento
+            if dados['preenchimento'] != 'Nenhum':
+                bsdf.inputs['Base Color'].default_value = hex_para_rgba(dados['preenchimento'])
+
+            # Propriedades do Material
+            bsdf.inputs['Roughness'].default_value = regra['roughness']
+            
+            if 'Transmission Weight' in bsdf.inputs: # Blender 4.0+
+                bsdf.inputs['Transmission Weight'].default_value = regra['transmission']
+            elif 'Transmission' in bsdf.inputs:      # Blender 3.6 e anteriores
+                bsdf.inputs['Transmission'].default_value = regra['transmission']
+
+            obj.data.materials.append(mat)
+            
+    # Limpeza do arquivo temporário
+    if os.path.exists(caminho_temp):
+        os.remove(caminho_temp)
+    print("Troféu instanciado e materiais aplicados com sucesso!")
+
+# EXECUÇÃO DO SCRIPT
+meu_svg = r"F:\\Backup Aroni 29-05-2021\\Publico\\2026\\3d\\arquivos\\teste.svg" 
+automatizar_trofeu_svg(meu_svg)
