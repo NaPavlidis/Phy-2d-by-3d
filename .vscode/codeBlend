@@ -5,19 +5,19 @@ import os
 
 # --- 1. REGRAS DE MATERIAIS (BASEADO NO CONTORNO) ---
 REGRAS_MATERIAIS = {    
-    '#ffff00': { 
+    '#ED3237': { 
         'nome_material': 'Acrilico',
         'extrusao': 0.001,      # 1mm (Blender faz para os dois lados = 2mm)
         'roughness': 0.05,      # Bem liso e reflexivo
         'transmission': 1.0     # Transparente
     },
-    '#ffffff': { 
+    '#FEFEFE': { 
         'nome_material': 'MDF',
-        'extrusao': 0.0015,     # 1.5mm (Blender faz para os dois lados = 3mm)
+        'extrusao': 0.03,     # 1.5mm (Blender faz para os dois lados = 3mm)
         'roughness': 0.9,       # Fosco
         'transmission': 0.0     # Opaco
     },
-    '#ff00ff': { 
+    '#EC268F': { 
         'nome_material': 'Adesivo',
         'extrusao': 0.00005,    # Espessura de papel/adesivo
         'roughness': 0.4,       # Leve brilho
@@ -41,7 +41,7 @@ def hex_para_rgba(hex_color, alpha=1.0):
         
     return (srgb_para_linear(r), srgb_para_linear(g), srgb_para_linear(b), alpha)
 
-# --- 3. PIPELINE PRINCIPAL DE INSTANCIAÇÃO ---
+## --- 3. PIPELINE PRINCIPAL ---
 def automatizar_trofeu_svg(caminho_svg):
     ET.register_namespace('', "http://www.w3.org/2000/svg")
     try:
@@ -54,7 +54,7 @@ def automatizar_trofeu_svg(caminho_svg):
     dados_extraidos = {}
     contador = 1
     
-    # PASSO A: Ler o SVG e salvar as cores antes de instanciar
+    # PASSO A: Ler o SVG e salvar as cores (O Python salva na ordem exata de baixo pra cima do SVG)
     for elem in root.iter():
         tag = elem.tag.split('}')[-1]
         if tag in ['g', 'svg', 'defs', 'style']: continue
@@ -81,85 +81,91 @@ def automatizar_trofeu_svg(caminho_svg):
                 'contorno': stroke if stroke else 'Nenhum'
             }
         
-        # Limpa os strokes para o Blender não duplicar o objeto na importação
+        # Limpa os strokes para não duplicar curvas
         if 'stroke' in elem.attrib: del elem.attrib['stroke']
         if 'stroke-width' in elem.attrib: del elem.attrib['stroke-width']
-        if style:
-            elem.set('style', re.sub(r'stroke-[^;]+;?|stroke:[^;]+;?', '', style))
+        if style: elem.set('style', re.sub(r'stroke-[^;]+;?|stroke:[^;]+;?', '', style))
             
-    # PASSO B: Salvar temporário limpo e instanciar no Blender
+    # PASSO B: Salvar temporário limpo e instanciar
+    
     caminho_temp = os.path.join(os.path.dirname(caminho_svg), "temp_import.svg")
     tree.write(caminho_temp)
+
+    objetos_antes = set(bpy.context.scene.objects)
     
     bpy.ops.object.select_all(action='DESELECT')
-    bpy.ops.import_curve.svg(filepath=caminho_temp) # <-- AQUI ELE INSTANCIA O SVG!
+    bpy.ops.import_curve.svg(filepath=caminho_temp)
 
+    objetos_depois = set(bpy.context.scene.objects)
+
+    # 4. Subtrai os objetos antigos dos novos. O que sobrar são APENAS os objetos do SVG!
+    objetos_importados = list(objetos_depois - objetos_antes)
     
-   # PASSO C: Aplicar a espessura (extrusão) enquanto ainda são Curvas
-    objetos_importados = bpy.context.selected_objects
-    
+    # 5. Seleciona manualmente cada um deles no contexto do Blender para o Passo C funcionar
     for obj in objetos_importados:
-        nome_base = obj.name.split('.')[0] 
-        
-        if nome_base in dados_extraidos:
-            dados = dados_extraidos[nome_base]
-            cor_contorno = dados['contorno'].lower() if dados['contorno'] != 'Nenhum' else ''
-            
-            # Pega as configurações do dicionário
-            regra = REGRAS_MATERIAIS.get(cor_contorno, {
-                'nome_material': 'Padrao', 'extrusao': 0.001, 'roughness': 0.5, 'transmission': 0.0
-            })
+        obj.select_set(True)   
 
-            # Transforma em 3D usando a propriedade da curva
-            obj.data.extrude = regra['extrusao']
-            
-            # Opcional: Aumentar a resolução da curva antes de converter (deixa as bordas mais redondinhas)
-            obj.data.resolution_u = 24 
+    print(bpy.context.selected_objects.__len__(), " objetos importados do SVG.")
 
-    # PASSO D: Converter todas as Curvas selecionadas em Malha (Mesh)
+    # era pra converter em mash para dar espessura.
     if objetos_importados:
-        # O Blender exige que um objeto seja o "ativo" para a conversão funcionar
+        print('objetos importados:', [obj.name for obj in objetos_importados])
         bpy.context.view_layer.objects.active = objetos_importados[0]
         bpy.ops.object.convert(target='MESH')
 
-    # PASSO E: Aplicar os Materiais (agora nos Meshes convertidos)
-    # A seleção se mantém após a conversão, então iteramos de novo
-    for obj in bpy.context.selected_objects:
-        nome_base = obj.name.split('.')[0] 
+    # PASSO D: Dar Espessura, Material e Empilhar no Eixo Z
+    altura_z_atual = 0.0 # Começamos no chão (Z = 0)
+    
+    # Colocando os itens da lista na mesma ondem
+    for nome_base, dados in dados_extraidos.items():
+        print('orden de entrada nº', list(dados_extraidos.keys()).index(nome_base) + 1, ':', nome_base, dados)
+        # Encontra o objeto correspondente no Blender
+        obj = next((o for o in objetos_importados if o.name.split('.')[0] == nome_base), None)
+
+        if not obj: continue
+        cor_contorno = dados['contorno'].lower() if dados['contorno'] != 'Nenhum' else ''
+        regra = REGRAS_MATERIAIS.get(cor_contorno, {
+            'nome_material': 'Padrao', 'espessura': 0.001, 'roughness': 0.5, 'transmission': 0.0
+        })
+
+        espessura = regra['espessura']
+
+        # 1. Posicionar no eixo Z para não encavalar
+        obj.location[2] = altura_z_atual
+
+        # 2. Aplicar Modificador Solidify (O jeito mais seguro de dar espessura em Mesh)
+        mod_solidify = obj.modifiers.new(name="Espessura_3D", type='SOLIDIFY')
+        mod_solidify.thickness = espessura
+        mod_solidify.offset = 1.0 # Faz a geometria crescer para cima, e não para o meio
+
+        # Aplica (Assa) o modificador para a geometria virar malha definitiva
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.modifier_apply(modifier=mod_solidify.name)
+
+        # 3. Atualizar a altura Z para a próxima peça ficar em cima dessa
+        altura_z_atual += espessura
+
+        # 4. Configurar e aplicar o Material
+        obj.data.materials.clear()
+        mat = bpy.data.materials.new(name=f"Mat_{regra['nome_material']}_{nome_base}")
+        mat.use_nodes = True
+        bsdf = mat.node_tree.nodes.get("Principled BSDF")
+
+        if dados['preenchimento'] != 'Nenhum':
+            bsdf.inputs['Base Color'].default_value = hex_para_rgba(dados['preenchimento'])
+
+        bsdf.inputs['Roughness'].default_value = regra['roughness']
         
-        if nome_base in dados_extraidos:
-            dados = dados_extraidos[nome_base]
-            cor_contorno = dados['contorno'].lower() if dados['contorno'] != 'Nenhum' else ''
+        if 'Transmission Weight' in bsdf.inputs: bsdf.inputs['Transmission Weight'].default_value = regra['transmission']
+        elif 'Transmission' in bsdf.inputs: bsdf.inputs['Transmission'].default_value = regra['transmission']
+
+        obj.data.materials.append(mat)
             
-            regra = REGRAS_MATERIAIS.get(cor_contorno, {
-                'nome_material': 'Padrao', 'roughness': 0.5, 'transmission': 0.0
-            })
-
-            # Configura o Material
-            obj.data.materials.clear()
-            mat = bpy.data.materials.new(name=f"Mat_{regra['nome_material']}_{nome_base}")
-            mat.use_nodes = True
-            bsdf = mat.node_tree.nodes.get("Principled BSDF")
-
-            # Cor de preenchimento
-            if dados['preenchimento'] != 'Nenhum':
-                bsdf.inputs['Base Color'].default_value = hex_para_rgba(dados['preenchimento'])
-
-            # Propriedades do Material
-            bsdf.inputs['Roughness'].default_value = regra['roughness']
-            
-            if 'Transmission Weight' in bsdf.inputs: # Blender 4.0+
-                bsdf.inputs['Transmission Weight'].default_value = regra['transmission']
-            elif 'Transmission' in bsdf.inputs:      # Blender 3.6 e anteriores
-                bsdf.inputs['Transmission'].default_value = regra['transmission']
-
-            obj.data.materials.append(mat)
-            
-    # Limpeza do arquivo temporário
+    # Limpeza final
     if os.path.exists(caminho_temp):
         os.remove(caminho_temp)
-    print("Troféu instanciado, convertido para MESH e materiais aplicados com sucesso!")
-
+    print("Troféu instanciado, convertido para malha, empilhado em Z e materiais aplicados com sucesso!")
+    
 # EXECUÇÃO DO SCRIPT
 meu_svg = r"F:\\Backup Aroni 29-05-2021\\Publico\\2026\\3d\\arquivos\\teste.svg" 
 automatizar_trofeu_svg(meu_svg)
