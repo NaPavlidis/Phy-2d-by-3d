@@ -93,9 +93,12 @@ def automatizar_trofeu_svg(caminho_svg):
     
     bpy.ops.object.select_all(action='DESELECT')
     bpy.ops.import_curve.svg(filepath=caminho_temp) # <-- AQUI ELE INSTANCIA O SVG!
+
     
-    # PASSO C: Aplicar as regras 3D e Materiais nos objetos instanciados
-    for obj in bpy.context.selected_objects:
+   # PASSO C: Aplicar a espessura (extrusão) enquanto ainda são Curvas
+    objetos_importados = bpy.context.selected_objects
+    
+    for obj in objetos_importados:
         nome_base = obj.name.split('.')[0] 
         
         if nome_base in dados_extraidos:
@@ -107,8 +110,30 @@ def automatizar_trofeu_svg(caminho_svg):
                 'nome_material': 'Padrao', 'extrusao': 0.001, 'roughness': 0.5, 'transmission': 0.0
             })
 
-            # Transforma em 3D (Extrusão)
+            # Transforma em 3D usando a propriedade da curva
             obj.data.extrude = regra['extrusao']
+            
+            # Opcional: Aumentar a resolução da curva antes de converter (deixa as bordas mais redondinhas)
+            obj.data.resolution_u = 24 
+
+    # PASSO D: Converter todas as Curvas selecionadas em Malha (Mesh)
+    if objetos_importados:
+        # O Blender exige que um objeto seja o "ativo" para a conversão funcionar
+        bpy.context.view_layer.objects.active = objetos_importados[0]
+        bpy.ops.object.convert(target='MESH')
+
+    # PASSO E: Aplicar os Materiais (agora nos Meshes convertidos)
+    # A seleção se mantém após a conversão, então iteramos de novo
+    for obj in bpy.context.selected_objects:
+        nome_base = obj.name.split('.')[0] 
+        
+        if nome_base in dados_extraidos:
+            dados = dados_extraidos[nome_base]
+            cor_contorno = dados['contorno'].lower() if dados['contorno'] != 'Nenhum' else ''
+            
+            regra = REGRAS_MATERIAIS.get(cor_contorno, {
+                'nome_material': 'Padrao', 'roughness': 0.5, 'transmission': 0.0
+            })
 
             # Configura o Material
             obj.data.materials.clear()
@@ -133,7 +158,7 @@ def automatizar_trofeu_svg(caminho_svg):
     # Limpeza do arquivo temporário
     if os.path.exists(caminho_temp):
         os.remove(caminho_temp)
-    print("Troféu instanciado e materiais aplicados com sucesso!")
+    print("Troféu instanciado, convertido para MESH e materiais aplicados com sucesso!")
 
 # EXECUÇÃO DO SCRIPT
 meu_svg = r"F:\\Backup Aroni 29-05-2021\\Publico\\2026\\3d\\arquivos\\teste.svg" 
