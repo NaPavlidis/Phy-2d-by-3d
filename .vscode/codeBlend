@@ -16,7 +16,7 @@ REGRAS_MATERIAIS = {
     },
     '#EC268F': { 
         'nome_material': 'ADESIVO',
-        'extrusao': 0.00005,    # Espessura mínima (como um papel/adesivo)
+        'extrusao': 0.0005,    # Espessura mínima (como um papel/adesivo)
         'roughness': 0.4,       # Meio termo, leve brilho
         'transmission': 0.0
     }
