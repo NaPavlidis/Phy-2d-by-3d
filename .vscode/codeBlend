@@ -121,7 +121,7 @@ def automatizar_trofeu_svg(caminho_svg):
         print('orden de entrada nº', list(dados_extraidos.keys()).index(nome_base) + 1, ':', nome_base, dados)
         # Encontra o objeto correspondente no Blender
         obj = next((o for o in objetos_importados if o.name.split('.')[0] == nome_base), None)
-
+        
         if not obj: continue
         cor_contorno = dados['contorno'].lower() if dados['contorno'] != 'Nenhum' else ''
         regra = REGRAS_MATERIAIS.get(cor_contorno, {
