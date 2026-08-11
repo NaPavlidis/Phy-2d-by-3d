@@ -1,102 +1,110 @@
-import bpy
 import xml.etree.ElementTree as ET
 import re
-import os
 
-def importar_svg_limpo(caminho_svg):
-    # 1. Prepara o parser e mantém o formato correto do SVG
-    ET.register_namespace('', "http://www.w3.org/2000/svg")
+REGRAS_MATERIAIS = {
+    "#FEFEFE": { 
+        'nome_material': 'MDF',
+        'extrusao': 0.003,      # 1mm (Nota: o Blender extrude pros dois lados, gerando 2mm total)
+        'roughness': 0.05,      # Quase zero = bem reflexivo/liso
+        'transmission': 1.0     # 1.0 = 100% transparente (como vidro/acrílico)
+    },
+    "#EC268F": { 
+        'nome_material': 'ACRILICO',
+        'extrusao': 0.0015,     # 1.5mm (gerando 3mm total)
+        'roughness': 0.9,       # Alto = bem fosco
+        'transmission': 0.0     # 0.0 = totalmente sólido/opaco
+    },
+    '#EC268F': { 
+        'nome_material': 'ADESIVO',
+        'extrusao': 0.00005,    # Espessura mínima (como um papel/adesivo)
+        'roughness': 0.4,       # Meio termo, leve brilho
+        'transmission': 0.0
+    }
+}
+
+def extrair_cores_svg_avancado(caminho_arquivo):
     try:
-        tree = ET.parse(caminho_svg)
+        tree = ET.parse(caminho_arquivo)
         root = tree.getroot()
     except Exception as e:
-        print(f"Erro ao ler SVG: {e}")
-        return
-    
-    dados_extraidos = {}
-    contador = 1
-    
-    # 2. Iterar sobre o SVG para extrair dados e limpar os contornos
+        print(f"Erro ao ler o arquivo SVG: {e}")
+        return []
+
+    # 1. Mapear classes CSS dentro das tags <style> (Muito comum no Illustrator e Corel)
+    css_classes = {}
     for elem in root.iter():
-        tag = elem.tag.split('}')[-1]
+        tag_nome = elem.tag.split('}')[-1]
+        if tag_nome == 'style' and elem.text:
+            # Encontra padrões como: .cls-1 { fill: #ff0000; stroke: #000000; }
+            matches = re.finditer(r'\.([a-zA-Z0-9_\-]+)\s*\{([^}]+)\}', elem.text)
+            for m in matches:
+                nome_classe = m.group(1)
+                propriedades = m.group(2)
+                
+                # \b garante que pegue 'stroke:' e não 'stroke-width:'
+                # [^;}] pega tudo até o ponto e vírgula ou fechamento da chave
+                fill_m = re.search(r'\bfill\s*:\s*([^;}]+)', propriedades)
+                stroke_m = re.search(r'\bstroke\s*:\s*([^;}]+)', propriedades)
+                
+                css_classes[nome_classe] = {
+                    'fill': fill_m.group(1).strip() if fill_m and fill_m.group(1).strip() != 'none' else None,
+                    'stroke': stroke_m.group(1).strip() if stroke_m and stroke_m.group(1).strip() != 'none' else None
+                }
+
+    dados_objetos = []
+
+    # 2. Iterar sobre os elementos do SVG
+    for elem in root.iter():
+        tag = elem.tag.split('}')[-1] 
+        
         if tag in ['g', 'svg', 'defs', 'style']:
             continue
-            
-        # Garante que TODO objeto tenha um ID. O Blender usa o ID como nome do objeto!
-        id_obj = elem.get('id')
-        if not id_obj:
-            id_obj = f"svg_shape_{contador}"
-            elem.set('id', id_obj)
-        contador += 1
+
+        id_obj = elem.get('id', 'Objeto_sem_nome')
         
+        # Pega atributos diretos primeiro
+        fill = elem.get('fill')
+        stroke = elem.get('stroke')
+        
+        # 3. Verifica se o objeto usa alguma classe CSS (ex: class="cls-1")
+        classes_obj = elem.get('class', '').split()
+        for cls in classes_obj:
+            if cls in css_classes:
+                if css_classes[cls]['fill']: fill = css_classes[cls]['fill']
+                if css_classes[cls]['stroke']: stroke = css_classes[cls]['stroke']
+
+        # 4. Verifica se o objeto tem estilo "inline" (sobrescreve a classe)
         style = elem.get('style', '')
-        fill = elem.get('fill', None)
-        stroke = elem.get('stroke', None)
-        
-        # Extrair cores do atributo style (se existirem lá)
         if style:
-            fill_match = re.search(r'fill:\s*([^;]+)', style)
-            stroke_match = re.search(r'stroke:\s*([^;]+)', style)
-            if fill_match and fill_match.group(1) != 'none': 
-                fill = fill_match.group(1).strip()
-            if stroke_match and stroke_match.group(1) != 'none': 
-                stroke = stroke_match.group(1).strip()
-        
-        # Salva as cores no nosso dicionário usando o ID como chave
+            fill_m = re.search(r'\bfill\s*:\s*([^;}]+)', style)
+            stroke_m = re.search(r'\bstroke\s*:\s*([^;}]+)', style)
+            
+            if fill_m and fill_m.group(1).strip() != 'none': 
+                fill = fill_m.group(1).strip()
+            if stroke_m and stroke_m.group(1).strip() != 'none': 
+                stroke = stroke_m.group(1).strip()
+
+        # Filtra os vazios explícitos ("none") que podem vir dos atributos diretos
+        if fill == 'none': fill = None
+        if stroke == 'none': stroke = None
+
         if fill or stroke:
-            dados_extraidos[id_obj] = {
+            dados_objetos.append({
+                'id': id_obj,
+                'tipo': tag,
                 'preenchimento': fill if fill else 'Nenhum',
                 'contorno': stroke if stroke else 'Nenhum'
-            }
-        
-        # 3. O TRUQUE: Remover o stroke (contorno) para o Blender não duplicar o objeto
-        if 'stroke' in elem.attrib:
-            del elem.attrib['stroke']
-        if 'stroke-width' in elem.attrib:
-            del elem.attrib['stroke-width']
-        if style:
-            # Remove o stroke de dentro da string do style
-            novo_style = re.sub(r'stroke:[^;]+;?', '', style)
-            novo_style = re.sub(r'stroke-width:[^;]+;?', '', novo_style)
-            elem.set('style', novo_style)
+            })
             
-    # 4. Salvar um SVG temporário sem os contornos
-    pasta = os.path.dirname(caminho_svg)
-    caminho_temp = os.path.join(pasta, "temp_import.svg")
-    tree.write(caminho_temp)
-    
-    # 5. Importar o SVG temporário no Blender
-    # Importante desmarcar a seleção atual para focar só no que for importado
-    bpy.ops.object.select_all(action='DESELECT')
-    bpy.ops.import_curve.svg(filepath=caminho_temp)
-    
-    # 6. Processar os objetos que acabaram de ser importados
-    objetos_importados = bpy.context.selected_objects
-    
-    print("\n--- Objetos Importados e Dados Vinculados ---")
-    for obj in objetos_importados:
-        # O Blender às vezes adiciona .001 no nome, vamos pegar o nome base (que é o ID)
-        nome_base = obj.name.split('.')[0] 
-        
-        if nome_base in dados_extraidos:
-            dados = dados_extraidos[nome_base]
-            print(f"Objeto Blender: {obj.name}")
-            print(f"  -> Material a criar (Contorno SVG): {dados['contorno']}")
-            print(f"  -> Cor do Material (Preenchimento SVG): {dados['preenchimento']}\n")
-            
-            # --- AQUI COMEÇA A SUA MAGIA 3D ---
-            # Exemplo: Dar espessura 3D baseada no material
-            # if dados['contorno'] == '#ffffff':  # MDF
-            #     obj.data.extrude = 0.003  # 3mm
-            # elif dados['contorno'] == '#ff0000': # Acrílico
-            #     obj.data.extrude = 0.002  # 2mm
-            
-    # 7. Apagar o arquivo temporário para não sujar o computador
-    if os.path.exists(caminho_temp):
-        os.remove(caminho_temp)
+    return dados_objetos
 
-# --- USO ---
-# Substitua pelo caminho real do seu arquivo
+# --- TESTE O SCRIPT AQUI ---
 caminho_do_seu_svg = r"F:\\Backup Aroni 29-05-2021\\Publico\\2026\\3d\\arquivos\\teste.svg" 
 
-importar_svg_limpo(caminho_do_seu_svg)
+cores_encontradas = extrair_cores_svg_avancado(caminho_do_seu_svg)
+
+print("\n--- Analisando o SVG ---")
+for obj in cores_encontradas:
+    print(f"Objeto: {obj['id']} | Tipo: {obj['tipo']}")
+    print(f"  -> Preenchimento (Cor): {obj['preenchimento']}")
+    print(f"  -> Contorno (Material): {obj['contorno']}\n")
