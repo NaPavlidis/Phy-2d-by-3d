@@ -162,7 +162,7 @@ def automatizar_trofeu_svg(caminho_svg):
         elif 'Transmission' in bsdf.inputs: bsdf.inputs['Transmission'].default_value = regra['transmission']
 
         obj.data.materials.append(mat)
-            ''
+            
     # Limpeza final
     if os.path.exists(caminho_temp):
         os.remove(caminho_temp)
