@@ -90,28 +90,30 @@ def automatizar_trofeu_svg(caminho_svg):
     
     caminho_temp = os.path.join(os.path.dirname(caminho_svg), "temp_import.svg")
     tree.write(caminho_temp)
-
+    
     objetos_antes = set(bpy.context.scene.objects)
     
+
     bpy.ops.object.select_all(action='DESELECT')
     bpy.ops.import_curve.svg(filepath=caminho_temp)
 
     objetos_depois = set(bpy.context.scene.objects)
-
+    bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='MEDIAN')
     # 4. Subtrai os objetos antigos dos novos. O que sobrar são APENAS os objetos do SVG!
     objetos_importados = list(objetos_depois - objetos_antes)
-    
+   
     # 5. Seleciona manualmente cada um deles no contexto do Blender para o Passo C funcionar
     for obj in objetos_importados:
         obj.select_set(True)   
-
+   
     print(bpy.context.selected_objects.__len__(), " objetos importados do SVG.")
-
+   
     # era pra converter em mash para dar espessura.
     if objetos_importados:
         print('objetos importados:', [obj.name for obj in objetos_importados])
         bpy.context.view_layer.objects.active = objetos_importados[0]
         bpy.ops.object.convert(target='MESH')
+
 
     # PASSO D: Dar Espessura, Material e Empilhar no Eixo Z
     altura_z_atual = 0.0 # Começamos no chão (Z = 0)
