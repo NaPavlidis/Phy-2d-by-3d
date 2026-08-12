@@ -1,0 +1,182 @@
+import bpy
+import xml.etree.ElementTree as ET
+import re
+import os
+import mathutils # <--- IMPORTANTE: Biblioteca matemática do Blender para calcular as colisões
+
+
+# --- 1. REGRAS DE MATERIAIS (BASEADO NO CONTORNO) ---
+REGRAS_MATERIAIS = {    
+    '#ed3237': { 
+        'nome_material': 'Acrilico',
+        'extrusao': 0.001,      # 1mm (Blender faz para os dois lados = 2mm)
+        'roughness': 0.05,      # Bem liso e reflexivo
+        'transmission': 1.0     # Transparente
+    },
+    '#fefefe': { 
+        'nome_material': 'MDF',
+        'extrusao': 0.003,     # 1.5mm (Blender faz para os dois lados = 3mm)
+        'roughness': 0.9,       # Fosco
+        'transmission': 0.0     # Opaco
+    },
+    '#ec268F': { 
+        'nome_material': 'Adesivo',
+        'extrusao': 0.00001,    # Espessura de papel/adesivo
+        'roughness': 0.4,       # Leve brilho
+        'transmission': 0.0     # Opaco
+    }
+}
+
+# --- 2. FUNÇÕES AUXILIARES ---
+def hex_para_rgba(hex_color, alpha=1.0):
+    if not hex_color or not hex_color.startswith('#'): return (1.0, 1.0, 1.0, alpha)
+    hex_color = hex_color.lstrip('#').lower()
+    r, g, b = int(hex_color[0:2], 16)/255.0, int(hex_color[2:4], 16)/255.0, int(hex_color[4:6], 16)/255.0
+    def srgb_para_linear(c): return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+    return (srgb_para_linear(r), srgb_para_linear(g), srgb_para_linear(b), alpha)
+
+def obter_caixa_de_colisao(obj):
+    """Calcula os limites (X, Y) do objeto na cena para saber o espaço que ele ocupa"""
+    bpy.context.view_layer.update() # Garante que o Blender saiba a posição real do objeto
+    cantos = [obj.matrix_world @ mathutils.Vector(v) for v in obj.bound_box]
+    xs = [v.x for v in cantos]
+    ys = [v.y for v in cantos]
+    return min(xs), max(xs), min(ys), max(ys)
+
+# --- 3. PIPELINE PRINCIPAL ---
+def automatizar_trofeu_svg(caminho_svg):
+    ET.register_namespace('', "http://www.w3.org/2000/svg")
+    try:
+        tree = ET.parse(caminho_svg)
+        root = tree.getroot()
+    except Exception as e:
+        print(f"Erro ao ler SVG: {e}")
+        return
+    
+    dados_extraidos = {}
+    contador = 1
+    
+    # PASSO A: Ler o SVG (Lê na ordem exata de baixo para cima)
+    for elem in root.iter():
+        tag = elem.tag.split('}')[-1]
+        if tag in ['g', 'svg', 'defs', 'style']: continue
+            
+        id_obj = elem.get('id')
+        if not id_obj:
+            id_obj = f"trofeu_shape_{contador}"
+            elem.set('id', id_obj)
+        contador += 1
+        
+        style = elem.get('style', '')
+        fill = elem.get('fill', None)
+        stroke = elem.get('stroke', None)
+        
+        if style:
+            fill_match = re.search(r'fill:\s*([^;]+)', style)
+            stroke_match = re.search(r'stroke:\s*([^;]+)', style)
+            if fill_match and fill_match.group(1) != 'none': fill = fill_match.group(1).strip()
+            if stroke_match and stroke_match.group(1) != 'none': stroke = stroke_match.group(1).strip()
+        
+        if fill or stroke:
+            dados_extraidos[id_obj] = {'preenchimento': fill if fill else 'Nenhum', 'contorno': stroke if stroke else 'Nenhum'}
+        
+        # Limpeza pro Blender importar limpo
+        if 'stroke' in elem.attrib: del elem.attrib['stroke']
+        if 'stroke-width' in elem.attrib: del elem.attrib['stroke-width']
+        if style: elem.set('style', re.sub(r'stroke-[^;]+;?|stroke:[^;]+;?', '', style))
+            
+    # PASSO B: Importação Isolada Segura
+    caminho_temp = os.path.join(os.path.dirname(caminho_svg), "temp_import.svg")
+    tree.write(caminho_temp)
+    
+    objetos_antes = set(bpy.context.scene.objects)
+    bpy.ops.object.select_all(action='DESELECT')
+    bpy.ops.import_curve.svg(filepath=caminho_temp)
+    objetos_depois = set(bpy.context.scene.objects)
+    
+    objetos_importados = list(objetos_depois - objetos_antes)
+    for obj in objetos_importados: obj.select_set(True)
+
+    # PASSO C: Converter para Mesh imediatamente
+    if objetos_importados:
+        bpy.context.view_layer.objects.active = objetos_importados[0]
+        bpy.ops.object.convert(target='MESH')
+
+    # PASSO D: Lógica Inteligente de Empilhamento por Colisão
+    pecas_ja_montadas = [] # Memória do script para lembrar onde estão as peças anteriores
+    
+    for nome_base, dados in dados_extraidos.items():
+        obj = next((o for o in objetos_importados if o.name.split('.')[0] == nome_base), None)
+        if not obj: continue
+            
+        # Blindagem de cor e busca da Regra
+        cor_contorno_crua = str(dados['contorno']).strip().lower()
+        cor_contorno = cor_contorno_crua.replace('"', '').replace("'", "").replace('\n', '').replace(' ', '')
+        
+        regra = REGRAS_MATERIAIS.get(cor_contorno, {
+            'nome_material': 'Padrao', 'extrusao': 0.001, 'roughness': 0.5, 'transmission': 0.0
+        })
+        espessura = regra['extrusao'] if 'extrusao' in regra else 0.001
+
+        # --- A MÁGICA DA COLISÃO ACONTECE AQUI ---
+        # 1. Pega os limites da peça que estamos segurando na mão agora
+        min_x1, max_x1, min_y1, max_y1 = obter_caixa_de_colisao(obj)
+        altura_alvo_z = 0.0 # Por padrão, ela nasce no chão (Zero)
+        
+        # 2. Compara ela com todas as peças que já colocamos na mesa
+        for peca_antiga in pecas_ja_montadas:
+            min_x2, max_x2, min_y2, max_y2 = peca_antiga['limites']
+            
+            # Verifica se os quadrados se cruzam (Overlap X e Y)
+            bate_no_x = (max_x1 > min_x2) and (min_x1 < max_x2)
+            bate_no_y = (max_y1 > min_y2) and (min_y1 < max_y2)
+            
+            if bate_no_x and bate_no_y:
+                # Opa! Tem uma peça embaixo! Vamos subir a altura alvo pra ficar em cima dela.
+                # Se tiver mais de uma peça (ex: duas bases), ele sempre pega a mais alta (max)
+                if peca_antiga['topo_z'] > altura_alvo_z:
+                    altura_alvo_z = peca_antiga['topo_z']
+                    
+        # 3. Aplica a posição Z calculada e dá a espessura
+        obj.location[2] = altura_alvo_z
+        
+        mod_solidify = obj.modifiers.new(name="Espessura", type='SOLIDIFY')
+        mod_solidify.thickness = espessura
+        mod_solidify.offset = 1.0 # Cresce pra cima
+        
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.modifier_apply(modifier=mod_solidify.name)
+
+        # 4. Registra essa peça na memória para as próximas esbarrarem nela
+        pecas_ja_montadas.append({
+            'obj': obj,
+            'limites': (min_x1, max_x1, min_y1, max_y1),
+            'topo_z': altura_alvo_z + espessura # O topo dela é a altura Z que ela nasceu + a própria espessura
+        })
+        # ----------------------------------------
+
+        # PASSO E: Aplicar Material
+        obj.data.materials.clear()
+        mat = bpy.data.materials.new(name=f"Mat_{regra['nome_material']}_{nome_base}")
+        mat.use_nodes = True
+        bsdf = mat.node_tree.nodes.get("Principled BSDF")
+
+        if dados['preenchimento'] != 'Nenhum':
+            bsdf.inputs['Base Color'].default_value = hex_para_rgba(dados['preenchimento'])
+
+        bsdf.inputs['Roughness'].default_value = regra['roughness']
+        
+        if 'Transmission Weight' in bsdf.inputs: bsdf.inputs['Transmission Weight'].default_value = regra['transmission']
+        elif 'Transmission' in bsdf.inputs: bsdf.inputs['Transmission'].default_value = regra['transmission']
+
+        obj.data.materials.append(mat)
+            
+    if os.path.exists(caminho_temp):
+        os.remove(caminho_temp)
+    print("Montagem Inteligente concluída!")
+
+# ==========================================
+# EXECUÇÃO DO SCRIPT
+# ==========================================
+meu_svg = r"F:\\Backup Aroni 29-05-2021\\Publico\\2026\\3d\\arquivos\\teste.svg" 
+automatizar_trofeu_svg(meu_svg)
