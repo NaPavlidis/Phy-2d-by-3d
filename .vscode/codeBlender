@@ -3,6 +3,7 @@ import xml.etree.ElementTree as ET
 import re
 import os
 import mathutils # <--- IMPORTANTE: Biblioteca matemática do Blender para calcular as colisões
+import math # <--- Adicione isto aqui!
 
 
 # --- 1. REGRAS DE MATERIAIS (BASEADO NO CONTORNO) ---
@@ -19,6 +20,13 @@ REGRAS_MATERIAIS = {
         'roughness': 0.9,       # Fosco
         'transmission': 0.0     # Opaco
     },
+      '#fefefe': { 
+            'nome_material': 'BASE',
+            'extrusao': 0.006,     # 1.5mm (Blender faz para os dois lados = 3mm)
+            'roughness': 0.9,       # Fosco
+            'transmission': 0.0     # Opaco
+        },
+
     '#ec268F': { 
         'nome_material': 'Adesivo',
         'extrusao': 0.00001,    # Espessura de papel/adesivo
@@ -137,21 +145,36 @@ def automatizar_trofeu_svg(caminho_svg):
                 if peca_antiga['topo_z'] > altura_alvo_z:
                     altura_alvo_z = peca_antiga['topo_z']
                     
-        # 3. Aplica a posição Z calculada e dá a espessura
+      
         obj.location[2] = altura_alvo_z
+
+
         
+        # --- A CURA PARA OS NÓS TORTOS (Limpeza de Geometria) ---
+        bpy.ops.object.mode_set(mode='EDIT')              
+        bpy.ops.mesh.select_all(action='SELECT')            
+        bpy.ops.mesh.remove_doubles(threshold=0.0001)        
+        bpy.ops.mesh.dissolve_limited(angle_limit=math.radians(3))
+        bpy.ops.mesh.normals_make_consistent(inside=False)   
+        
+        bpy.ops.object.mode_set(mode='OBJECT')
         mod_solidify = obj.modifiers.new(name="Espessura", type='SOLIDIFY')
         mod_solidify.thickness = espessura
-        mod_solidify.offset = 1.0 # Cresce pra cima
+        mod_solidify.offset = 1.0
         
-        bpy.context.view_layer.objects.active = obj
+        # --- CONFIGURAÇÕES DE ALTA QUALIDADE DO SOLIDIFY ---
+        mod_solidify.use_even_offset = True     
+        mod_solidify.use_quality_normals = True 
+
+        mod_solidify.solidify_mode = 'NON_MANIFOLD'
+     
         bpy.ops.object.modifier_apply(modifier=mod_solidify.name)
 
         # 4. Registra essa peça na memória para as próximas esbarrarem nela
         pecas_ja_montadas.append({
             'obj': obj,
             'limites': (min_x1, max_x1, min_y1, max_y1),
-            'topo_z': altura_alvo_z + espessura # O topo dela é a altura Z que ela nasceu + a própria espessura
+            'topo_z': altura_alvo_z + espessura 
         })
         # ----------------------------------------
 
@@ -178,5 +201,5 @@ def automatizar_trofeu_svg(caminho_svg):
 # ==========================================
 # EXECUÇÃO DO SCRIPT
 # ==========================================
-meu_svg = r"F:\\Backup Aroni 29-05-2021\\Publico\\2026\\3d\\arquivos\\teste.svg" 
+meu_svg = r"F:\\Backup Aroni 29-05-2021\\Publico\\2026\\3d\\arquivos\\teste2.svg" 
 automatizar_trofeu_svg(meu_svg)
