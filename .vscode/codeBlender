@@ -20,7 +20,7 @@ REGRAS_MATERIAIS = {
         'roughness': 0.9,       # Fosco
         'transmission': 0.0     # Opaco
     },
-      '#fefefe': { 
+      "#6e3636": { 
             'nome_material': 'BASE',
             'extrusao': 0.006,     # 1.5mm (Blender faz para os dois lados = 3mm)
             'roughness': 0.9,       # Fosco
