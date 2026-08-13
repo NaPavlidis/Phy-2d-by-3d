@@ -2,36 +2,34 @@ import bpy
 import xml.etree.ElementTree as ET
 import re
 import os
-import mathutils # <--- IMPORTANTE: Biblioteca matemática do Blender para calcular as colisões
-import math # <--- Adicione isto aqui!
-
+import mathutils 
+import math 
 
 # --- 1. REGRAS DE MATERIAIS (BASEADO NO CONTORNO) ---
 REGRAS_MATERIAIS = {    
     '#ed3237': { 
         'nome_material': 'Acrilico',
-        'extrusao': 0.001,      # 1mm (Blender faz para os dois lados = 2mm)
-        'roughness': 0.05,      # Bem liso e reflexivo
-        'transmission': 1.0     # Transparente
+        'extrusao': 0.001,      
+        'roughness': 0.02,      
+        'transmission': 1.0     
     },
     '#fefefe': { 
         'nome_material': 'MDF',
-        'extrusao': 0.003,     # 1.5mm (Blender faz para os dois lados = 3mm)
-        'roughness': 0.9,       # Fosco
-        'transmission': 0.0     # Opaco
+        'extrusao': 0.003,     
+        'roughness': 0.9,       
+        'transmission': 0.0     
     },
-      "#6e3636": { 
-            'nome_material': 'BASE',
-            'extrusao': 0.006,     # 1.5mm (Blender faz para os dois lados = 3mm)
-            'roughness': 0.9,       # Fosco
-            'transmission': 0.0     # Opaco
-        },
-
-    '#ec268F': { 
+    "#6e3636": { 
+        'nome_material': 'BASE',
+        'extrusao': 0.006,     
+        'roughness': 0.9,       
+        'transmission': 0.0     
+    },
+    '#ec268f': { 
         'nome_material': 'Adesivo',
-        'extrusao': 0.00001,    # Espessura de papel/adesivo
-        'roughness': 0.4,       # Leve brilho
-        'transmission': 0.0     # Opaco
+        'extrusao': 0.0001,    
+        'roughness': 0.1,       
+        'transmission': 0.4     
     }
 }
 
@@ -44,12 +42,29 @@ def hex_para_rgba(hex_color, alpha=1.0):
     return (srgb_para_linear(r), srgb_para_linear(g), srgb_para_linear(b), alpha)
 
 def obter_caixa_de_colisao(obj):
-    """Calcula os limites (X, Y) do objeto na cena para saber o espaço que ele ocupa"""
-    bpy.context.view_layer.update() # Garante que o Blender saiba a posição real do objeto
+    bpy.context.view_layer.update()
     cantos = [obj.matrix_world @ mathutils.Vector(v) for v in obj.bound_box]
     xs = [v.x for v in cantos]
     ys = [v.y for v in cantos]
     return min(xs), max(xs), min(ys), max(ys)
+
+def criar_uv_perfeito(obj):
+    if not obj.data.uv_layers: obj.data.uv_layers.new(name="UVMap")
+    uv_layer = obj.data.uv_layers.active.data
+    xs = [v.co.x for v in obj.data.vertices]
+    ys = [v.co.y for v in obj.data.vertices]
+    if not xs or not ys: return
+    
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+    largura = max_x - min_x if max_x > min_x else 0.001
+    altura = max_y - min_y if max_y > min_y else 0.001
+    
+    for loop in obj.data.loops:
+        v = obj.data.vertices[loop.vertex_index]
+        u = (v.co.x - min_x) / largura
+        v_uv = (v.co.y - min_y) / altura
+        uv_layer[loop.index].uv = (u, v_uv)
 
 # --- 3. PIPELINE PRINCIPAL ---
 def automatizar_trofeu_svg(caminho_svg):
@@ -61,145 +76,225 @@ def automatizar_trofeu_svg(caminho_svg):
         print(f"Erro ao ler SVG: {e}")
         return
     
+    imagens_no_svg = []
+    elementos_para_remover = []
     dados_extraidos = {}
     contador = 1
     
-    # PASSO A: Ler o SVG (Lê na ordem exata de baixo para cima)
-    for elem in root.iter():
-        tag = elem.tag.split('}')[-1]
-        if tag in ['g', 'svg', 'defs', 'style']: continue
+    for pai in root.iter():
+        for filho in list(pai):
+            tag_filho = filho.tag.split('}')[-1]
             
-        id_obj = elem.get('id')
-        if not id_obj:
-            id_obj = f"trofeu_shape_{contador}"
-            elem.set('id', id_obj)
-        contador += 1
+            if tag_filho == 'image':
+                for attr, val in filho.attrib.items():
+                    if attr.endswith('href') and not val.startswith('data:'):
+                        imagens_no_svg.append(val)
+                        break
+                elementos_para_remover.append((pai, filho))
+                continue
+                
+            elif tag_filho in ['clipPath', 'mask']:
+                elementos_para_remover.append((pai, filho))
+                continue
+                
+            if tag_filho in ['path', 'rect', 'circle', 'ellipse', 'polygon', 'polyline', 'line']:
+                style = filho.get('style', '')
+                stroke = filho.get('stroke', None)
+                fill = filho.get('fill', None)
+                
+                if style:
+                    stroke_match = re.search(r'stroke:\s*([^;]+)', style)
+                    if stroke_match and stroke_match.group(1) != 'none': stroke = stroke_match.group(1).strip()
+                    fill_match = re.search(r'fill:\s*([^;]+)', style)
+                    if fill_match and fill_match.group(1) != 'none': fill = fill_match.group(1).strip()
+                
+                cor_contorno = ''
+                if stroke and stroke != 'none':
+                    cor_limpa = stroke.replace('"', '').replace("'", "").replace('\n', '').replace(' ', '').lower()
+                    if len(cor_limpa) == 4 and cor_limpa.startswith('#'):
+                        cor_limpa = f"#{cor_limpa[1]*2}{cor_limpa[2]*2}{cor_limpa[3]*2}"
+                    cor_contorno = cor_limpa
+
+                if cor_contorno not in REGRAS_MATERIAIS:
+                    elementos_para_remover.append((pai, filho))
+                else:
+                    id_obj = f"trofeu_shape_{contador}"
+                    filho.set('id', id_obj)
+                    contador += 1
+                    
+                    dados_extraidos[id_obj] = {
+                        'contorno': cor_contorno, 
+                        'preenchimento': fill if fill else 'Nenhum'
+                    }
+                    
+                    filho.set('fill', '#ffffff') 
+                    if 'stroke' in filho.attrib: del filho.attrib['stroke']
+                    if 'stroke-width' in filho.attrib: del filho.attrib['stroke-width']
+                    
+                    if style: 
+                        style_limpo = re.sub(r'stroke-[^;]+;?|stroke:[^;]+;?', '', style)
+                        style_limpo = re.sub(r'fill:[^;]+;?', '', style_limpo)
+                        filho.set('style', style_limpo)
+
+    for pai, filho in elementos_para_remover:
+        try: pai.remove(filho)
+        except: pass
+
+    pasta_svg = os.path.dirname(caminho_svg)
+    nome_arquivo_svg = os.path.splitext(os.path.basename(caminho_svg))[0]
+    
+    pasta_imagens = os.path.join(pasta_svg, f"{nome_arquivo_svg}__Images")
+    if not os.path.exists(pasta_imagens):
+        pasta_imagens = os.path.join(pasta_svg, f"{nome_arquivo_svg}_Images")
         
-        style = elem.get('style', '')
-        fill = elem.get('fill', None)
-        stroke = elem.get('stroke', None)
-        
-        if style:
-            fill_match = re.search(r'fill:\s*([^;]+)', style)
-            stroke_match = re.search(r'stroke:\s*([^;]+)', style)
-            if fill_match and fill_match.group(1) != 'none': fill = fill_match.group(1).strip()
-            if stroke_match and stroke_match.group(1) != 'none': stroke = stroke_match.group(1).strip()
-        
-        if fill or stroke:
-            dados_extraidos[id_obj] = {'preenchimento': fill if fill else 'Nenhum', 'contorno': stroke if stroke else 'Nenhum'}
-        
-        # Limpeza pro Blender importar limpo
-        if 'stroke' in elem.attrib: del elem.attrib['stroke']
-        if 'stroke-width' in elem.attrib: del elem.attrib['stroke-width']
-        if style: elem.set('style', re.sub(r'stroke-[^;]+;?|stroke:[^;]+;?', '', style))
-            
-    # PASSO B: Importação Isolada Segura
-    caminho_temp = os.path.join(os.path.dirname(caminho_svg), "temp_import.svg")
+    imagens_disponiveis = []
+    
+    if os.path.exists(pasta_imagens):
+        for img_nome in imagens_no_svg:
+            caminho_img = os.path.join(pasta_imagens, os.path.basename(img_nome))
+            if os.path.exists(caminho_img) and caminho_img not in imagens_disponiveis:
+                imagens_disponiveis.append(caminho_img)
+                
+        if not imagens_disponiveis:
+            for arquivo in os.listdir(pasta_imagens):
+                if arquivo.lower().endswith(('.png', '.jpg', '.jpeg')):
+                    imagens_disponiveis.append(os.path.join(pasta_imagens, arquivo))
+                    
+    caminho_temp = os.path.join(pasta_svg, "temp_import.svg")
     tree.write(caminho_temp)
     
     objetos_antes = set(bpy.context.scene.objects)
     bpy.ops.object.select_all(action='DESELECT')
     bpy.ops.import_curve.svg(filepath=caminho_temp)
-    objetos_depois = set(bpy.context.scene.objects)
-    
-    objetos_importados = list(objetos_depois - objetos_antes)
+    objetos_importados = list(set(bpy.context.scene.objects) - objetos_antes)
     for obj in objetos_importados: obj.select_set(True)
 
-    # PASSO C: Converter para Mesh imediatamente
     if objetos_importados:
         bpy.context.view_layer.objects.active = objetos_importados[0]
         bpy.ops.object.convert(target='MESH')
 
-    # PASSO D: Lógica Inteligente de Empilhamento por Colisão
-    pecas_ja_montadas = [] # Memória do script para lembrar onde estão as peças anteriores
+    bpy.context.view_layer.update()
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+
+    idx_imagem_atual = 0 
     
     for nome_base, dados in dados_extraidos.items():
         obj = next((o for o in objetos_importados if o.name.split('.')[0] == nome_base), None)
         if not obj: continue
             
-        # Blindagem de cor e busca da Regra
-        cor_contorno_crua = str(dados['contorno']).strip().lower()
-        cor_contorno = cor_contorno_crua.replace('"', '').replace("'", "").replace('\n', '').replace(' ', '')
-        
-        regra = REGRAS_MATERIAIS.get(cor_contorno, {
-            'nome_material': 'Padrao', 'extrusao': 0.001, 'roughness': 0.5, 'transmission': 0.0
-        })
-        espessura = regra['extrusao'] if 'extrusao' in regra else 0.001
+        cor_contorno = dados['contorno']
+        regra = REGRAS_MATERIAIS[cor_contorno]
 
-        # --- A MÁGICA DA COLISÃO ACONTECE AQUI ---
-        # 1. Pega os limites da peça que estamos segurando na mão agora
-        min_x1, max_x1, min_y1, max_y1 = obter_caixa_de_colisao(obj)
-        altura_alvo_z = 0.0 # Por padrão, ela nasce no chão (Zero)
+        min_x, max_x, min_y, max_y = obter_caixa_de_colisao(obj)
+        pontos_de_teste = []
+        matriz, matriz_inv = obj.matrix_world, obj.matrix_world.inverted()
         
-        # 2. Compara ela com todas as peças que já colocamos na mesa
-        for peca_antiga in pecas_ja_montadas:
-            min_x2, max_x2, min_y2, max_y2 = peca_antiga['limites']
+        for v in obj.data.vertices:
+            pontos_de_teste.append(( (matriz @ v.co).x, (matriz @ v.co).y ))
             
-            # Verifica se os quadrados se cruzam (Overlap X e Y)
-            bate_no_x = (max_x1 > min_x2) and (min_x1 < max_x2)
-            bate_no_y = (max_y1 > min_y2) and (min_y1 < max_y2)
-            
-            if bate_no_x and bate_no_y:
-                # Opa! Tem uma peça embaixo! Vamos subir a altura alvo pra ficar em cima dela.
-                # Se tiver mais de uma peça (ex: duas bases), ele sempre pega a mais alta (max)
-                if peca_antiga['topo_z'] > altura_alvo_z:
-                    altura_alvo_z = peca_antiga['topo_z']
+        passo_x = (max_x - min_x)/10.0 if max_x > min_x else 0.001
+        passo_y = (max_y - min_y)/10.0 if max_y > min_y else 0.001
+        
+        for i in range(11):
+            for j in range(11):
+                px, py = min_x + (i*passo_x), min_y + (j*passo_y)
+                or_loc = matriz_inv @ mathutils.Vector((px, py, 1.0))
+                tg_loc = matriz_inv @ mathutils.Vector((px, py, 0.0))
+                if obj.ray_cast(or_loc, (tg_loc - or_loc).normalized())[0]:
+                    pontos_de_teste.append((px, py))
+
+        obj.hide_set(True)
+        bpy.context.view_layer.update()
+        
+        altura_alvo_z = 0.0
+        for px, py in pontos_de_teste:
+            ray_scene = bpy.context.scene.ray_cast(depsgraph, mathutils.Vector((px, py, 10.0)), mathutils.Vector((0, 0, -1)))
+            if ray_scene[0] and ray_scene[1].z > altura_alvo_z:
+                altura_alvo_z = ray_scene[1].z
                     
-      
-        obj.location[2] = altura_alvo_z
-
-
+        obj.hide_set(False)
+        obj.location.z = altura_alvo_z
         
-        # --- A CURA PARA OS NÓS TORTOS (Limpeza de Geometria) ---
-        bpy.ops.object.mode_set(mode='EDIT')              
-        bpy.ops.mesh.select_all(action='SELECT')            
-        bpy.ops.mesh.remove_doubles(threshold=0.0001)        
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.select_all(action='SELECT')
+        bpy.ops.mesh.remove_doubles(threshold=0.0001)
         bpy.ops.mesh.dissolve_limited(angle_limit=math.radians(3))
-        bpy.ops.mesh.normals_make_consistent(inside=False)   
-        
+        bpy.ops.mesh.normals_make_consistent(inside=False)
         bpy.ops.object.mode_set(mode='OBJECT')
-        mod_solidify = obj.modifiers.new(name="Espessura", type='SOLIDIFY')
-        mod_solidify.thickness = espessura
-        mod_solidify.offset = 1.0
-        
-        # --- CONFIGURAÇÕES DE ALTA QUALIDADE DO SOLIDIFY ---
+
+        if regra['nome_material'] == 'Adesivo': criar_uv_perfeito(obj)
+
+        mod_solidify = obj.modifiers.new(name="extrusao", type='SOLIDIFY')
+        mod_solidify.thickness = regra['extrusao']
+        mod_solidify.offset = 1.0 
         mod_solidify.use_even_offset = True     
         mod_solidify.use_quality_normals = True 
-
-        mod_solidify.solidify_mode = 'NON_MANIFOLD'
-     
+        mod_solidify.solidify_mode = 'NON_MANIFOLD' 
         bpy.ops.object.modifier_apply(modifier=mod_solidify.name)
-
-        # 4. Registra essa peça na memória para as próximas esbarrarem nela
-        pecas_ja_montadas.append({
-            'obj': obj,
-            'limites': (min_x1, max_x1, min_y1, max_y1),
-            'topo_z': altura_alvo_z + espessura 
-        })
-        # ----------------------------------------
-
-        # PASSO E: Aplicar Material
+        
+        # --- A MÁGICA DA CRIAÇÃO DO MATERIAL ---
         obj.data.materials.clear()
         mat = bpy.data.materials.new(name=f"Mat_{regra['nome_material']}_{nome_base}")
         mat.use_nodes = True
-        bsdf = mat.node_tree.nodes.get("Principled BSDF")
+        nodes = mat.node_tree.nodes
+        links = mat.node_tree.links
 
-        if dados['preenchimento'] != 'Nenhum':
-            bsdf.inputs['Base Color'].default_value = hex_para_rgba(dados['preenchimento'])
+        # Troca para Glossy se for Acrílico
+        if regra['nome_material'] == 'Acrilico':
+            node_principled = nodes.get("Principled BSDF")
+            if node_principled: nodes.remove(node_principled)
+            
+            # Cria o nó Glossy
+            bsdf = nodes.new('ShaderNodeBsdfGlossy')
+            bsdf.location = (10, 300)
+            
+            # Liga o Glossy na saída do material
+            node_output = nodes.get("Material Output")
+            links.new(bsdf.outputs['BSDF'], node_output.inputs['Surface'])
+            
+            pino_cor = 'Color' # O Glossy chama a cor de "Color"
+        else:
+            # Mantém o Principled BSDF para MDF e Adesivo
+            bsdf = nodes.get("Principled BSDF")
+            pino_cor = 'Base Color' # O Principled chama a cor de "Base Color"
 
-        bsdf.inputs['Roughness'].default_value = regra['roughness']
+        # Aplica texturas e cores usando o pino_cor correto
+        if regra['nome_material'] == 'Adesivo' and imagens_disponiveis:
+            caminho_imagem = imagens_disponiveis[idx_imagem_atual % len(imagens_disponiveis)]
+            idx_imagem_atual += 1 
+            
+            img_blender = bpy.data.images.get(os.path.basename(caminho_imagem))
+            if not img_blender: img_blender = bpy.data.images.load(filepath=caminho_imagem)
+            
+            tex_node = nodes.new('ShaderNodeTexImage')
+            tex_node.image = img_blender
+            tex_node.location = (-300, 300)
+            links.new(tex_node.outputs['Color'], bsdf.inputs[pino_cor])
+            
+        elif dados['preenchimento'] != 'Nenhum':
+            bsdf.inputs[pino_cor].default_value = hex_para_rgba(dados['preenchimento'])
+
+        # Aplica a rugosidade (Roughness)
+        if 'Roughness' in bsdf.inputs:
+            bsdf.inputs['Roughness'].default_value = regra['roughness']
         
-        if 'Transmission Weight' in bsdf.inputs: bsdf.inputs['Transmission Weight'].default_value = regra['transmission']
-        elif 'Transmission' in bsdf.inputs: bsdf.inputs['Transmission'].default_value = regra['transmission']
+        # O Glossy não tem pino de "Transmission", então só aplicamos isso se o pino existir
+        if 'Transmission Weight' in bsdf.inputs: 
+            bsdf.inputs['Transmission Weight'].default_value = regra['transmission']
+        elif 'Transmission' in bsdf.inputs: 
+            bsdf.inputs['Transmission'].default_value = regra['transmission']
+        # ----------------------------------------
 
         obj.data.materials.append(mat)
+        bpy.context.view_layer.update()
+        depsgraph = bpy.context.evaluated_depsgraph_get()
             
-    if os.path.exists(caminho_temp):
-        os.remove(caminho_temp)
-    print("Montagem Inteligente concluída!")
+    if os.path.exists(caminho_temp): os.remove(caminho_temp)
+    print("Sucesso! Acrílicos agora usam Glossy BSDF e os demais usam Principled BSDF.")
 
 # ==========================================
 # EXECUÇÃO DO SCRIPT
 # ==========================================
-meu_svg = r"F:\\Backup Aroni 29-05-2021\\Publico\\2026\\3d\\arquivos\\teste2.svg" 
+meu_svg = r"F:\Backup Aroni 29-05-2021\Publico\2026\3d\arquivos\teste5.svg" 
 automatizar_trofeu_svg(meu_svg)
