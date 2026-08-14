@@ -74,6 +74,8 @@ def automatizar_trofeu_svg(caminho_svg):
             stroke_match = re.search(r'stroke:\s*([^;]+)', style)
             if fill_match and fill_match.group(1) != 'none': fill = fill_match.group(1).strip()
             if stroke_match and stroke_match.group(1) != 'none': stroke = stroke_match.group(1).strip()
+
+        
         
         if fill or stroke:
             dados_extraidos[id_obj] = {
