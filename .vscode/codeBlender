@@ -10,19 +10,19 @@ REGRAS_MATERIAIS = {
     '#ed3237': { 
         'nome_material': 'Acrilico',
         'extrusao': 0.001,      
-        'roughness': 0.02,      
+        'roughness': 0.05,      
         'transmission': 1.0     
     },
     '#fefefe': { 
         'nome_material': 'MDF',
         'extrusao': 0.003,     
-        'roughness': 0.9,       
+        'roughness': 0.1,       
         'transmission': 0.0     
     },
-    "#3e4095ff": { 
+    "#3e4095": { 
         'nome_material': 'BASE',
-        'extrusao': 0.006,     
-        'roughness': 0.9,       
+        'extrusao': 0.015,     
+        'roughness': 0.1,       
         'transmission': 0.0     
     },
     '#ec268f': { 
@@ -84,8 +84,9 @@ def automatizar_trofeu_svg(caminho_svg):
     for pai in root.iter():
         for filho in list(pai):
             tag_filho = filho.tag.split('}')[-1]
-            
+           
             if tag_filho == 'image':
+                
                 for attr, val in filho.attrib.items():
                     if attr.endswith('href') and not val.startswith('data:'):
                         imagens_no_svg.append(val)
@@ -101,13 +102,13 @@ def automatizar_trofeu_svg(caminho_svg):
                 style = filho.get('style', '')
                 stroke = filho.get('stroke', None)
                 fill = filho.get('fill', None)
-                
+                print(f"Elemento: {tag_filho}, Fill: {fill}, Stroke: {stroke}")
                 if style:
                     stroke_match = re.search(r'stroke:\s*([^;]+)', style)
                     if stroke_match and stroke_match.group(1) != 'none': stroke = stroke_match.group(1).strip()
                     fill_match = re.search(r'fill:\s*([^;]+)', style)
                     if fill_match and fill_match.group(1) != 'none': fill = fill_match.group(1).strip()
-                
+               
                 cor_contorno = ''
                 if stroke and stroke != 'none':
                     cor_limpa = stroke.replace('"', '').replace("'", "").replace('\n', '').replace(' ', '').lower()
@@ -162,6 +163,7 @@ def automatizar_trofeu_svg(caminho_svg):
                     
     caminho_temp = os.path.join(pasta_svg, "temp_import.svg")
     tree.write(caminho_temp)
+
     
     objetos_antes = set(bpy.context.scene.objects)
     bpy.ops.object.select_all(action='DESELECT')
@@ -215,6 +217,7 @@ def automatizar_trofeu_svg(caminho_svg):
         obj.hide_set(False)
         obj.location.z = altura_alvo_z
         
+        
         bpy.context.view_layer.objects.active = obj
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
@@ -222,9 +225,7 @@ def automatizar_trofeu_svg(caminho_svg):
         bpy.ops.mesh.dissolve_limited(angle_limit=math.radians(3))
         bpy.ops.mesh.normals_make_consistent(inside=False)
         bpy.ops.object.mode_set(mode='OBJECT')
-
         if regra['nome_material'] == 'Adesivo': criar_uv_perfeito(obj)
-
         mod_solidify = obj.modifiers.new(name="extrusao", type='SOLIDIFY')
         mod_solidify.thickness = regra['extrusao']
         mod_solidify.offset = 1.0 
@@ -239,7 +240,7 @@ def automatizar_trofeu_svg(caminho_svg):
         mat.use_nodes = True
         nodes = mat.node_tree.nodes
         links = mat.node_tree.links
-
+        
         # Troca para Glossy se for Acrílico
         if regra['nome_material'] == 'Acrilico':
             node_principled = nodes.get("Principled BSDF")
@@ -257,8 +258,11 @@ def automatizar_trofeu_svg(caminho_svg):
         else:
             # Mantém o Principled BSDF para MDF e Adesivo
             bsdf = nodes.get("Principled BSDF")
-            pino_cor = 'Base Color' # O Principled chama a cor de "Base Color"
+            pino_cor = 'Base Color' # O Principled chama a cor de "Base Color"    
 
+        #  se for base
+       
+        
         # Aplica texturas e cores usando o pino_cor correto
         if regra['nome_material'] == 'Adesivo' and imagens_disponiveis:
             caminho_imagem = imagens_disponiveis[idx_imagem_atual % len(imagens_disponiveis)]
@@ -284,6 +288,8 @@ def automatizar_trofeu_svg(caminho_svg):
             bsdf.inputs['Transmission Weight'].default_value = regra['transmission']
         elif 'Transmission' in bsdf.inputs: 
             bsdf.inputs['Transmission'].default_value = regra['transmission']
+
+        
         # ----------------------------------------
 
         obj.data.materials.append(mat)
@@ -296,5 +302,5 @@ def automatizar_trofeu_svg(caminho_svg):
 # ==========================================
 # EXECUÇÃO DO SCRIPT
 # ==========================================
-meu_svg = r"F:\Backup Aroni 29-05-2021\Publico\2026\3d\arquivos\teste6.svg" 
-automatizar_trofeu_svg(meu_svg)
+meu_svg = r"F:\Backup Aroni 29-05-2021\Publico\2026\3d\arquivos\teste12.svg" 
+automatizar_trofeu_svg(meu_svg) 
