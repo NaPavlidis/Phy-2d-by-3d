@@ -2,11 +2,15 @@ import bpy
 import xml.etree.ElementTree as ET
 import re
 import os
+import shutil
 import mathutils 
 import math 
 
+
 # --- CONFIGURAÇÕES GERAIS ---
 PASTA_DO_SCRIPT = r"F:\\Backup Aroni 29-05-2021\\Publico\\2026\\3d\\BLENDER CODE"
+
+RENDERIZAR_AUTOMATICAMENTE = True
 
 # --- CONFIGURAÇÕES DA CÂMERA E RENDER ---
 RESOLUCAO_X = 1080
@@ -97,7 +101,35 @@ def automatizar_trofeu_svg(caminho_svg):
     except Exception as e:
         print(f"Erro ao ler SVG: {e}")
         return
-    
+
+def renderBlenderImages(renderPer, nome_trofeu, local_svg):
+    if renderPer:
+        nome_trofeu = os.path.splitext(os.path.basename(local_svg))[0]
+        print(f"Renderizando automaticamente o troféu: {nome_trofeu}")
+        os.path.join(PASTA_DO_SCRIPT,"imagens")
+        pasta_dest = os.path.join(PASTA_DO_SCRIPT,"imagens", nome_trofeu)
+        print(f"Renderizando imagens na pasta: {pasta_dest}")
+        
+        # Limpa pasta anterior
+        if os.path.exists(pasta_dest):
+            shutil.rmtree(pasta_dest) 
+        else:
+            os.makedirs(pasta_dest)
+           
+        
+        # Lista câmeras para renderizar
+        cameras = [bpy.data.objects.get("Camera_Principal"), 
+                   bpy.data.objects.get("Camera_Esquerda"), 
+                   bpy.data.objects.get("Camera_Direita")]
+        print(f"Câmeras encontradas para renderização: {[cam.name for cam in cameras if cam]}")
+        
+        for cam in cameras:
+                  if cam:
+                      bpy.context.scene.camera = cam
+                      bpy.context.scene.render.filepath = os.path.join(pasta_dest, f"{cam.name}.png")
+                      bpy.ops.render.render(write_still=True)
+
+
     imagens_no_svg = []
     elementos_para_remover = []
     dados_extraidos = {}
@@ -330,7 +362,7 @@ def automatizar_trofeu_svg(caminho_svg):
                 input_a = mix_node.inputs.get('A', mix_node.inputs[6])
                 input_b = mix_node.inputs.get('B', mix_node.inputs[7])
                 saida_mix = mix_node.outputs.get('Result', mix_node.outputs[2])
-            else:
+            else:   
                 mix_node = nodes.new('ShaderNodeMixRGB')
                 mix_node.blend_type = 'MULTIPLY'
                 input_fac = mix_node.inputs['Fac']
@@ -440,15 +472,18 @@ def automatizar_trofeu_svg(caminho_svg):
                 min_z = min(min_z, coord.z)
                 max_z = max(max_z, coord.z)
 
-        centro_x = (min_x + max_x) / 2.0
-        centro_y = (min_y + max_y) / 2.0
-        centro_z = (min_z + max_z) / 2.0
+        # O Alvo exato (Centro do Troféu)
+        alvo_centro = mathutils.Vector((
+            (min_x + max_x) / 2.0,
+            (min_y + max_y) / 2.0,
+            (min_z + max_z) / 2.0
+        ))
 
         tamanho_x = max_x - min_x
         tamanho_z = max_z - min_z
 
-        # Função auxiliar para criar/posicionar câmeras
-        def configurar_camera(nome, offset_x, offset_y, offset_z, rot_x, rot_z):
+        # Função inteligente que cria a câmera e a força a olhar para o alvo central
+        def criar_e_apontar_camera(nome, local_vetor):
             cam_obj = bpy.data.objects.get(nome)
             if not cam_obj:
                 cam_data = bpy.data.cameras.new(name=nome)
@@ -456,35 +491,55 @@ def automatizar_trofeu_svg(caminho_svg):
                 bpy.context.scene.collection.objects.link(cam_obj)
             
             cam_obj.data.type = 'PERSP'
-            fov = cam_obj.data.angle
+            cam_obj.location = local_vetor
             
-            if aspect_ratio > 1:
-                tamanho_real = max(tamanho_z, tamanho_x / aspect_ratio)
-            else:
-                tamanho_real = max(tamanho_x, tamanho_z * aspect_ratio)
-
-            distancia = (tamanho_real / 2.0) / math.tan(fov / 2.0) * MARGEM_CAMERA
-
-            # Posiciona em relação ao centro e offsets fornecidos
-            cam_obj.location = (centro_x + offset_x, min_y - distancia + offset_y, centro_z + offset_z)
-            cam_obj.rotation_euler = (math.radians(rot_x), 0, math.radians(rot_z))
+            # Matemática de direção: Faz a câmera olhar obrigatoriamente para o centro do troféu
+            direcao = alvo_centro - cam_obj.location
+            rotacao_quat = direcao.to_track_quat('-Z', 'Y')
+            cam_obj.rotation_euler = rotation_euler = rotacao_quat.to_euler()
+            
             return cam_obj
 
-        # 1. Câmera Principal (Frente)
-        cam_principal = configurar_camera("Camera_Principal", 0, 0, 0, 90, 0)
+        # Descobre a distância base ideal baseada no tamanho do troféu
+        fov = bpy.data.cameras.new("temp").angle if not bpy.context.scene.camera else bpy.context.scene.camera.data.angle
+        if aspect_ratio > 1:
+            tamanho_real = max(tamanho_z, tamanho_x / aspect_ratio)
+        else:
+            tamanho_real = max(tamanho_x, tamanho_z * aspect_ratio)
+
+        distancia_base = (tamanho_real / 2.0) / math.tan(fov / 2.0) * MARGEM_CAMERA
+
+        # 1. Câmera Principal (Frente centralizada)
+        loc_principal = mathutils.Vector((alvo_centro.x, min_y - distancia_base, alvo_centro.z))
+        cam_principal = criar_e_apontar_camera("Camera_Principal", loc_principal)
+
+        # 2. Câmera Esquerda (Diagonal esquerda, mais afastada e levemente elevada)
+        # Girada em torno do eixo Z tendo o centro do troféu como pivô
+        angulo_diag = math.radians(45) # Ângulo da diagonal
+        dist_lateral = distancia_base * 1.1
         
-        # 2. Câmera Esquerda (Diagonal esquerda + levemente de cima)
-        # Deslocada para a esquerda (-X), afastada em Y e elevada em Z
-        configurar_camera("Camera_Esquerda", -tamanho_x * 0.2, -tamanho_x * 0.0, tamanho_z * 0.25, 75, -25)
-        
-        # 3. Câmera Direita (Diagonal direita + levemente de cima)
-        # Deslocada para a direita (+X), afastada em Y e elevada em Z
-        configurar_camera("Camera_Direita", tamanho_x * 0.8, -tamanho_x * 0.0, tamanho_z * 0.25, 75, 25)
+        loc_esquerda = mathutils.Vector((
+            alvo_centro.x - (dist_lateral * math.sin(angulo_diag)),
+            alvo_centro.y - (dist_lateral * math.cos(angulo_diag)),
+            alvo_centro.z + (tamanho_z * 0.15) # Levemente do alto
+        ))
+        criar_e_apontar_camera("Camera_Esquerda", loc_esquerda)
+
+        # 3. Câmera Direita (Diagonal direita simétrica)
+        loc_direita = mathutils.Vector((
+            alvo_centro.x + (dist_lateral * math.sin(angulo_diag)),
+            alvo_centro.y - (dist_lateral * math.cos(angulo_diag)),
+            alvo_centro.z + (tamanho_z * 0.15)
+        ))
+        criar_e_apontar_camera("Camera_Direita", loc_direita)
 
         # Deixa a Principal ativa na cena
         bpy.context.scene.camera = cam_principal
 
     print("Estúdio configurado com sucesso! 3 Câmeras prontas (Principal ativa, Esquerda e Direita posicionadas).")
 
-meu_svg = r"F:\Backup Aroni 29-05-2021\Publico\2026\3d\arquivos\teste14.svg"
+meu_svg = r"F:\Backup Aroni 29-05-2021\Publico\2026\3d\arquivos\teste13\teste13.svg"
 automatizar_trofeu_svg(meu_svg)
+
+
+renderBlenderImages(RENDERIZAR_AUTOMATICAMENTE, meu_svg, PASTA_DO_SCRIPT)
