@@ -5,31 +5,53 @@ import os
 import mathutils 
 import math 
 
+# --- CONFIGURAÇÕES GERAIS ---
+PASTA_DO_SCRIPT = r"F:\\Backup Aroni 29-05-2021\\Publico\\2026\\3d\\BLENDER CODE"
+
+# --- CONFIGURAÇÕES DA CÂMERA E RENDER ---
+RESOLUCAO_X = 1080
+RESOLUCAO_Y = 1350 # Formato 4x5
+MARGEM_CAMERA = 2.4 # Aumente para afastar mais a câmera (Ex: 1.8), diminua para aproximar (Ex: 1.2)
+
 # --- 1. REGRAS DE MATERIAIS (BASEADO NO CONTORNO) ---
 REGRAS_MATERIAIS = {    
     '#ed3237': { 
         'nome_material': 'Acrilico',
         'extrusao': 0.001,      
-        'roughness': 0.05,      
-        'transmission': 1.0     
+        'roughness': 0.0,      
+        'transmission': 1.0,
+        'ior': 1.49 # (Não será aplicado pois pulamos o Acrílico, mas fica de registro)
     },
     '#fefefe': { 
         'nome_material': 'MDF',
         'extrusao': 0.003,     
         'roughness': 0.1,       
-        'transmission': 0.0     
+        'transmission': 0.0,
+        'ior': 1.005,  # <--- IOR AQUI!
+       
     },
     "#3e4095": { 
         'nome_material': 'BASE',
-        'extrusao': 0.015,     
+        'extrusao': 0.01,     
+        'roughness': 0.1,
+        'transmission': 0.0,
+        'ior': 1.005,   # <--- IOR AQUI!
+      
+    },
+    "#f58634": { 
+        'nome_material': 'BASE_FINA',
+        'extrusao': 0.006,     
         'roughness': 0.1,       
-        'transmission': 0.0     
+        'transmission': 0.0,
+        'ior': 1.005 ,  # <--- IOR AQUI!
+    
     },
     '#ec268f': { 
         'nome_material': 'Adesivo',
         'extrusao': 0.0001,    
         'roughness': 0.1,       
-        'transmission': 0.4     
+        'transmission': 0.4,
+        'ior': 1.05   # <--- IOR AQUI!
     }
 }
 
@@ -84,9 +106,8 @@ def automatizar_trofeu_svg(caminho_svg):
     for pai in root.iter():
         for filho in list(pai):
             tag_filho = filho.tag.split('}')[-1]
-           
+            
             if tag_filho == 'image':
-                
                 for attr, val in filho.attrib.items():
                     if attr.endswith('href') and not val.startswith('data:'):
                         imagens_no_svg.append(val)
@@ -102,13 +123,13 @@ def automatizar_trofeu_svg(caminho_svg):
                 style = filho.get('style', '')
                 stroke = filho.get('stroke', None)
                 fill = filho.get('fill', None)
-                print(f"Elemento: {tag_filho}, Fill: {fill}, Stroke: {stroke}")
+                
                 if style:
                     stroke_match = re.search(r'stroke:\s*([^;]+)', style)
                     if stroke_match and stroke_match.group(1) != 'none': stroke = stroke_match.group(1).strip()
                     fill_match = re.search(r'fill:\s*([^;]+)', style)
                     if fill_match and fill_match.group(1) != 'none': fill = fill_match.group(1).strip()
-               
+                
                 cor_contorno = ''
                 if stroke and stroke != 'none':
                     cor_limpa = stroke.replace('"', '').replace("'", "").replace('\n', '').replace(' ', '').lower()
@@ -163,7 +184,6 @@ def automatizar_trofeu_svg(caminho_svg):
                     
     caminho_temp = os.path.join(pasta_svg, "temp_import.svg")
     tree.write(caminho_temp)
-
     
     objetos_antes = set(bpy.context.scene.objects)
     bpy.ops.object.select_all(action='DESELECT')
@@ -179,6 +199,7 @@ def automatizar_trofeu_svg(caminho_svg):
     depsgraph = bpy.context.evaluated_depsgraph_get()
 
     idx_imagem_atual = 0 
+    suporte_dos_objetos = {} 
     
     for nome_base, dados in dados_extraidos.items():
         obj = next((o for o in objetos_importados if o.name.split('.')[0] == nome_base), None)
@@ -209,14 +230,17 @@ def automatizar_trofeu_svg(caminho_svg):
         bpy.context.view_layer.update()
         
         altura_alvo_z = 0.0
+        objeto_abaixo = None 
+        
         for px, py in pontos_de_teste:
             ray_scene = bpy.context.scene.ray_cast(depsgraph, mathutils.Vector((px, py, 10.0)), mathutils.Vector((0, 0, -1)))
-            if ray_scene[0] and ray_scene[1].z > altura_alvo_z:
+            if ray_scene[0] and ray_scene[1].z >= altura_alvo_z:
                 altura_alvo_z = ray_scene[1].z
+                objeto_abaixo = ray_scene[4] 
                     
         obj.hide_set(False)
         obj.location.z = altura_alvo_z
-        
+        suporte_dos_objetos[obj.name] = objeto_abaixo.name if objeto_abaixo else None
         
         bpy.context.view_layer.objects.active = obj
         bpy.ops.object.mode_set(mode='EDIT')
@@ -225,7 +249,10 @@ def automatizar_trofeu_svg(caminho_svg):
         bpy.ops.mesh.dissolve_limited(angle_limit=math.radians(3))
         bpy.ops.mesh.normals_make_consistent(inside=False)
         bpy.ops.object.mode_set(mode='OBJECT')
-        if regra['nome_material'] == 'Adesivo': criar_uv_perfeito(obj)
+
+        if regra['nome_material'] == 'Adesivo': 
+            criar_uv_perfeito(obj)
+
         mod_solidify = obj.modifiers.new(name="extrusao", type='SOLIDIFY')
         mod_solidify.thickness = regra['extrusao']
         mod_solidify.offset = 1.0 
@@ -234,36 +261,29 @@ def automatizar_trofeu_svg(caminho_svg):
         mod_solidify.solidify_mode = 'NON_MANIFOLD' 
         bpy.ops.object.modifier_apply(modifier=mod_solidify.name)
         
-        # --- A MÁGICA DA CRIAÇÃO DO MATERIAL ---
+        # ==========================================
+        # CONSTRUÇÃO DINÂMICA DOS MATERIAIS
+        # ==========================================
         obj.data.materials.clear()
         mat = bpy.data.materials.new(name=f"Mat_{regra['nome_material']}_{nome_base}")
         mat.use_nodes = True
         nodes = mat.node_tree.nodes
         links = mat.node_tree.links
-        
-        # Troca para Glossy se for Acrílico
+
         if regra['nome_material'] == 'Acrilico':
             node_principled = nodes.get("Principled BSDF")
             if node_principled: nodes.remove(node_principled)
-            
-            # Cria o nó Glossy
             bsdf = nodes.new('ShaderNodeBsdfGlossy')
             bsdf.location = (10, 300)
-            
-            # Liga o Glossy na saída do material
             node_output = nodes.get("Material Output")
             links.new(bsdf.outputs['BSDF'], node_output.inputs['Surface'])
-            
-            pino_cor = 'Color' # O Glossy chama a cor de "Color"
+            pino_cor = 'Color' 
         else:
-            # Mantém o Principled BSDF para MDF e Adesivo
             bsdf = nodes.get("Principled BSDF")
-            pino_cor = 'Base Color' # O Principled chama a cor de "Base Color"    
+            pino_cor = 'Base Color' 
 
-        #  se for base
-       
-        
-        # Aplica texturas e cores usando o pino_cor correto
+        cor_svg = hex_para_rgba(dados['preenchimento']) if dados['preenchimento'] != 'Nenhum' else (0.8, 0.6, 0.4, 1.0)
+
         if regra['nome_material'] == 'Adesivo' and imagens_disponiveis:
             caminho_imagem = imagens_disponiveis[idx_imagem_atual % len(imagens_disponiveis)]
             idx_imagem_atual += 1 
@@ -276,31 +296,195 @@ def automatizar_trofeu_svg(caminho_svg):
             tex_node.location = (-300, 300)
             links.new(tex_node.outputs['Color'], bsdf.inputs[pino_cor])
             
-        elif dados['preenchimento'] != 'Nenhum':
-            bsdf.inputs[pino_cor].default_value = hex_para_rgba(dados['preenchimento'])
+        elif 'textura' in regra and regra['textura']:
+            caminho_textura = os.path.join(PASTA_DO_SCRIPT, "textura", regra['textura'])
+            
+            tex_node = nodes.new('ShaderNodeTexImage')
+            tex_node.location = (-600, 300)
+            
+            tex_node.projection = 'BOX' 
+            tex_node.projection_blend = 0.15 
+            
+            tex_coord = nodes.new('ShaderNodeTexCoord')
+            tex_coord.location = (-1000, 300)
+            
+            mapping_node = nodes.new('ShaderNodeMapping')
+            mapping_node.location = (-800, 300)
+            
+            escala = regra.get('escala_textura', 1.0)
+            mapping_node.inputs['Scale'].default_value = (escala, escala, escala)
 
-        # Aplica a rugosidade (Roughness)
-        if 'Roughness' in bsdf.inputs:
+            links.new(tex_coord.outputs['Object'], mapping_node.inputs['Vector'])
+            links.new(mapping_node.outputs['Vector'], tex_node.inputs['Vector'])
+            
+            if os.path.exists(caminho_textura):
+                img_blender = bpy.data.images.get(os.path.basename(caminho_textura))
+                if not img_blender: img_blender = bpy.data.images.load(filepath=caminho_textura)
+                tex_node.image = img_blender
+
+            if bpy.app.version >= (3, 4, 0):
+                mix_node = nodes.new('ShaderNodeMix')
+                mix_node.data_type = 'RGBA'
+                mix_node.blend_type = 'MULTIPLY'
+                input_fac = mix_node.inputs.get('Factor', mix_node.inputs[0])
+                input_a = mix_node.inputs.get('A', mix_node.inputs[6])
+                input_b = mix_node.inputs.get('B', mix_node.inputs[7])
+                saida_mix = mix_node.outputs.get('Result', mix_node.outputs[2])
+            else:
+                mix_node = nodes.new('ShaderNodeMixRGB')
+                mix_node.blend_type = 'MULTIPLY'
+                input_fac = mix_node.inputs['Fac']
+                input_a = mix_node.inputs['Color1']
+                input_b = mix_node.inputs['Color2']
+                saida_mix = mix_node.outputs['Color']
+
+            mix_node.location = (-300, 300)
+            input_fac.default_value = 1.0
+
+            links.new(tex_node.outputs['Color'], input_a)
+            input_b.default_value = cor_svg
+            links.new(saida_mix, bsdf.inputs[pino_cor])
+            
+        else:
+            if dados['preenchimento'] != 'Nenhum':
+                bsdf.inputs[pino_cor].default_value = cor_svg
+
+        if 'Roughness' in bsdf.inputs: 
             bsdf.inputs['Roughness'].default_value = regra['roughness']
         
-        # O Glossy não tem pino de "Transmission", então só aplicamos isso se o pino existir
-        if 'Transmission Weight' in bsdf.inputs: 
-            bsdf.inputs['Transmission Weight'].default_value = regra['transmission']
-        elif 'Transmission' in bsdf.inputs: 
-            bsdf.inputs['Transmission'].default_value = regra['transmission']
-
-        
-        # ----------------------------------------
+        if regra['nome_material'] != 'Acrilico':
+            if 'Transmission Weight' in bsdf.inputs: 
+                bsdf.inputs['Transmission Weight'].default_value = regra.get('transmission', 0.0)
+            elif 'Transmission' in bsdf.inputs: 
+                bsdf.inputs['Transmission'].default_value = regra.get('transmission', 0.0)
+            
+            if 'IOR' in bsdf.inputs and 'ior' in regra:
+                bsdf.inputs['IOR'].default_value = regra['ior']
 
         obj.data.materials.append(mat)
         bpy.context.view_layer.update()
         depsgraph = bpy.context.evaluated_depsgraph_get()
             
     if os.path.exists(caminho_temp): os.remove(caminho_temp)
-    print("Sucesso! Acrílicos agora usam Glossy BSDF e os demais usam Principled BSDF.")
+    
+    # --- ÁRVORE GENEALÓGICA PARA ROTAÇÃO ---
+    def esta_apoiado_na_base(obj_name):
+        atual = obj_name
+        visitados = set() 
+        while atual and atual not in visitados:
+            visitados.add(atual)
+            nome_base_obj = atual.split('.')[0]
+            if nome_base_obj in dados_extraidos:
+                cor = dados_extraidos[nome_base_obj]['contorno']
+                mat_nome = REGRAS_MATERIAIS.get(cor, {}).get('nome_material')
+                if mat_nome in ['BASE', 'BASE_FINA']: return True 
+                elif mat_nome in ['MDF', 'Acrilico']: return False 
+            atual = suporte_dos_objetos.get(atual)
+        return False
 
-# ==========================================
-# EXECUÇÃO DO SCRIPT
-# ==========================================
-meu_svg = r"F:\Backup Aroni 29-05-2021\Publico\2026\3d\arquivos\teste12.svg" 
-automatizar_trofeu_svg(meu_svg) 
+    pecas_corpo = []
+    for obj in objetos_importados:
+        try:
+            if obj.name in bpy.data.objects:
+                nome_base_obj = obj.name.split('.')[0]
+                deve_rotacionar = True 
+                if nome_base_obj in dados_extraidos:
+                    cor = dados_extraidos[nome_base_obj]['contorno']
+                    nome_mat = REGRAS_MATERIAIS.get(cor, {}).get('nome_material')
+                    if nome_mat in ['BASE', 'BASE_FINA']: deve_rotacionar = False 
+                    elif nome_mat == 'Adesivo':
+                        if esta_apoiado_na_base(obj.name): deve_rotacionar = False 
+                if deve_rotacionar: pecas_corpo.append(obj)
+        except ReferenceError: pass
+
+    # Rotação Coletiva
+    if pecas_corpo:
+        bpy.context.view_layer.update() 
+        min_y = float('inf')
+        min_z = float('inf')
+        for obj in pecas_corpo:
+            for v in obj.bound_box:
+                coord = obj.matrix_world @ mathutils.Vector(v)
+                if coord.y < min_y: min_y = coord.y
+                if coord.z < min_z: min_z = coord.z
+                
+        pivo = mathutils.Vector((0.0, min_y, min_z))
+        mat_ida = mathutils.Matrix.Translation(pivo)
+        mat_rotacao = mathutils.Matrix.Rotation(math.radians(90), 4, 'X')
+        mat_volta = mathutils.Matrix.Translation(-pivo)
+        matriz_final = mat_ida @ mat_rotacao @ mat_volta
+        for obj in pecas_corpo:
+            obj.matrix_world = matriz_final @ obj.matrix_world
+
+    # ==========================================
+    # RIG DE ESTÚDIO DE 3 CÂMERAS (4x5)
+    # ==========================================
+    if objetos_importados:
+        bpy.context.view_layer.update()
+        
+        render = bpy.context.scene.render
+        render.resolution_x = RESOLUCAO_X
+        render.resolution_y = RESOLUCAO_Y
+        aspect_ratio = render.resolution_x / render.resolution_y
+        
+        min_x = min_y = min_z = float('inf')
+        max_x = max_y = max_z = float('-inf')
+
+        for obj in objetos_importados:
+            for v in obj.bound_box:
+                coord = obj.matrix_world @ mathutils.Vector(v)
+                min_x = min(min_x, coord.x)
+                max_x = max(max_x, coord.x)
+                min_y = min(min_y, coord.y)
+                max_y = max(max_y, coord.y)
+                min_z = min(min_z, coord.z)
+                max_z = max(max_z, coord.z)
+
+        centro_x = (min_x + max_x) / 2.0
+        centro_y = (min_y + max_y) / 2.0
+        centro_z = (min_z + max_z) / 2.0
+
+        tamanho_x = max_x - min_x
+        tamanho_z = max_z - min_z
+
+        # Função auxiliar para criar/posicionar câmeras
+        def configurar_camera(nome, offset_x, offset_y, offset_z, rot_x, rot_z):
+            cam_obj = bpy.data.objects.get(nome)
+            if not cam_obj:
+                cam_data = bpy.data.cameras.new(name=nome)
+                cam_obj = bpy.data.objects.new(nome, cam_data)
+                bpy.context.scene.collection.objects.link(cam_obj)
+            
+            cam_obj.data.type = 'PERSP'
+            fov = cam_obj.data.angle
+            
+            if aspect_ratio > 1:
+                tamanho_real = max(tamanho_z, tamanho_x / aspect_ratio)
+            else:
+                tamanho_real = max(tamanho_x, tamanho_z * aspect_ratio)
+
+            distancia = (tamanho_real / 2.0) / math.tan(fov / 2.0) * MARGEM_CAMERA
+
+            # Posiciona em relação ao centro e offsets fornecidos
+            cam_obj.location = (centro_x + offset_x, min_y - distancia + offset_y, centro_z + offset_z)
+            cam_obj.rotation_euler = (math.radians(rot_x), 0, math.radians(rot_z))
+            return cam_obj
+
+        # 1. Câmera Principal (Frente)
+        cam_principal = configurar_camera("Camera_Principal", 0, 0, 0, 90, 0)
+        
+        # 2. Câmera Esquerda (Diagonal esquerda + levemente de cima)
+        # Deslocada para a esquerda (-X), afastada em Y e elevada em Z
+        configurar_camera("Camera_Esquerda", -tamanho_x * 0.2, -tamanho_x * 0.0, tamanho_z * 0.25, 75, -25)
+        
+        # 3. Câmera Direita (Diagonal direita + levemente de cima)
+        # Deslocada para a direita (+X), afastada em Y e elevada em Z
+        configurar_camera("Camera_Direita", tamanho_x * 0.8, -tamanho_x * 0.0, tamanho_z * 0.25, 75, 25)
+
+        # Deixa a Principal ativa na cena
+        bpy.context.scene.camera = cam_principal
+
+    print("Estúdio configurado com sucesso! 3 Câmeras prontas (Principal ativa, Esquerda e Direita posicionadas).")
+
+meu_svg = r"F:\Backup Aroni 29-05-2021\Publico\2026\3d\arquivos\teste14.svg"
+automatizar_trofeu_svg(meu_svg)
