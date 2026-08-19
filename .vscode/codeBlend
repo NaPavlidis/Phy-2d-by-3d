@@ -175,3 +175,5 @@ def automatizar_trofeu_svg(caminho_svg):
 # EXECUÇÃO DO SCRIPT
 meu_svg = r"F:\\Backup Aroni 29-05-2021\\Publico\\2026\\3d\\arquivos\\teste2.svg" 
 automatizar_trofeu_svg(meu_svg)
+
+ 
