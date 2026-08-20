@@ -23,14 +23,10 @@ REGRAS_MATERIAIS = {
     # ACRÍLICOS (Qualquer cor com tipo 'ACRILICO' vai herdar estas propriedades)
     '#ed3237': { 'tipo': 'ACRILICO', 'nome_material': 'Acrilico_Vermelho', 'extrusao': 0.001, 'roughness': 0.05, 'transmission': 1.0, 'ior': 1.49 },
     
-
     # MDFs (Qualquer variação de MDF)
     '#fefefe': { 'tipo': 'MDF', 'nome_material': 'MDF_3mm', 'extrusao': 0.003, 'roughness': 0.1, 'transmission': 0.0, 'ior': 1.2},
     '#e6e7e8': { 'tipo': 'MDF', 'nome_material': 'MDF_6mm', 'extrusao': 0.006, 'roughness': 0.1, 'transmission': 0.0, 'ior': 1.2},
-            
-        
-    #'#f0f0f0': { 'tipo': 'MDF', 'nome_material': 'MDF_Claro', 'extrusao': 0.003, 'roughness': 0.1, 'transmission': 0.0, 'ior': 1.45, 'textura': 'madeira.jpg', 'escala_textura': 3.0 }, # Exemplo
-
+                
     # BASES
     "#f58634": { 'tipo': 'BASE', 'nome_material': 'Base_3MM', 'extrusao': 0.003, 'roughness': 0.1, 'transmission': 0.0, 'ior': 1.2 },
     "#3e4095": { 'tipo': 'BASE', 'nome_material': 'Base_6MM', 'extrusao': 0.01, 'roughness': 0.1, 'transmission': 0.0, 'ior': 1.2 },
@@ -535,7 +531,7 @@ def automatizar_trofeu_svg(caminho_svg):
 
         # 1. Câmera Principal (Frente)
         loc_principal = mathutils.Vector((alvo_centro.x, min_y - distancia_base, alvo_centro.z))
-        cam_principal = criar_e_apontar_camera("Camera_Esquerda", loc_principal)
+        criar_e_apontar_camera("Camera_Esquerda", loc_principal)
 
         # 2. Câmera Esquerda
         angulo_diag = math.radians(35) 
@@ -553,7 +549,7 @@ def automatizar_trofeu_svg(caminho_svg):
             alvo_centro.y - (dist_lateral * math.cos(angulo_diag)),
             alvo_centro.z + (tamanho_z * 0.15)
         ))
-        criar_e_apontar_camera("Camera_Direita", loc_direita)
+        cam_principal = criar_e_apontar_camera("Camera_Direita", loc_direita)
 
         bpy.context.scene.camera = cam_principal
 
