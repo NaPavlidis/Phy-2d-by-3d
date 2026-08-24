@@ -15,29 +15,29 @@ RENDERIZAR_AUTOMATICAMENTE = False
 # --- CONFIGURAÇÕES DA CÂMERA E RENDER ---
 RESOLUCAO_X = 1080
 RESOLUCAO_Y = 1350 # Formato 4x5
-MARGEM_CAMERA = 2.4 # Aumente para afastar mais a câmera (Ex: 1.8), diminua para aproximar (Ex: 1.2)
+MARGEM_CAMERA = 2.0 # Aumente para afastar mais a câmera (Ex: 1.8), diminua para aproximar (Ex: 1.2)
 ONRENDER = False
 
 
 REGRAS_MATERIAIS = {    
     # ACRÍLICOS (Qualquer cor com tipo 'ACRILICO' vai herdar estas propriedades)
-    '#ed3237': { 'tipo': 'ACRILICO', 'nome_material': 'acrilico_padrão', 'extrusao': 0.001, 'roughness': 0.05, 'transmission': 1.0, 'ior': 1.49 },
-    '#fff212': { 'tipo': 'ACRILICO', 'nome_material': 'Acrilico_transparente', 'extrusao': 0.001, 'roughness': 0.05, 'transmission': 1.0, 'ior': 2 },
+    '#ed3237': { 'tipo': 'ACRILICO', 'nome_material': 'acrilico_padrão', 'extrusao': 0.001, 'roughness': 0.00, 'transmission': 1.0, 'ior': 1.49 },
+    '#fff212': { 'tipo': 'ACRILICO', 'nome_material': 'Acrilico_transparente', 'extrusao': 0.001, 'roughness': 0.01, 'transmission': 1.0, 'ior': 2 },
         
     
     # MDFs (Qualquer variação de MDF)
-    '#fefefe': { 'tipo': 'MDF', 'nome_material': 'MDF_3mm', 'extrusao': 0.003, 'roughness': 0.3, 'transmission': 0.0, 'ior': 1.2},
-    '#e6e7e8': { 'tipo': 'MDF', 'nome_material': 'MDF_6mm', 'extrusao': 0.006, 'roughness': 0.3, 'transmission': 0.0, 'ior': 1.2},
-    '#373435': { 'tipo': 'MDF', 'nome_material': 'PLOTTER', 'extrusao': 0.0001, 'roughness': 0.3, 'transmission': 0.0, 'ior': 1.2},
+    '#fefefe': { 'tipo': 'MDF', 'nome_material': 'MDF_3mm', 'extrusao': 0.003, 'roughness': 0.01, 'transmission': 0.2, 'ior': 1.2},
+    '#e6e7e8': { 'tipo': 'MDF', 'nome_material': 'MDF_6mm', 'extrusao': 0.006, 'roughness': 0.01, 'transmission': 0.2, 'ior': 1.2},
+    '#373435': { 'tipo': 'MDF', 'nome_material': 'PLOTTER', 'extrusao': 0.001, 'roughness': 0.01, 'transmission': 0.2, 'ior': 1.2},
                 
     # BASES
-    "#f58634": { 'tipo': 'BASE', 'nome_material': 'Base_3MM', 'extrusao': 0.003, 'roughness': 0.3, 'transmission': 0.0, 'ior': 1.2 },
-    "#3e4095": { 'tipo': 'BASE', 'nome_material': 'Base_6MM', 'extrusao': 0.01, 'roughness': 0.3, 'transmission': 0.0, 'ior': 1.2 },
-    "#f7adaf": { 'tipo': 'BASE', 'nome_material': 'Base_9MM', 'extrusao': 0.015, 'roughness': 0.3, 'transmission': 0.0, 'ior': 1.2 },
-    "#84716b": { 'tipo': 'BASE', 'nome_material': 'Base_9MM', 'extrusao': 0.02, 'roughness': 0.3, 'transmission': 0.0, 'ior': 1.2 },
+    "#f58634": { 'tipo': 'BASE', 'nome_material': 'Base_3MM', 'extrusao': 0.003, 'roughness': 0.2, 'transmission': 0.0, 'ior': 1.15 },
+    "#3e4095": { 'tipo': 'BASE', 'nome_material': 'Base_6MM', 'extrusao': 0.01, 'roughness': 0.2, 'transmission': 0.0, 'ior': 1.15},
+    "#f7adaf": { 'tipo': 'BASE', 'nome_material': 'Base_9MM', 'extrusao': 0.015, 'roughness': 0.2, 'transmission': 0.0, 'ior': 1.15 },
+    "#84716b": { 'tipo': 'BASE', 'nome_material': 'Base_9MM', 'extrusao': 0.02, 'roughness': 0.2, 'transmission': 0.0, 'ior': 1.115},
     
     # ADESIVOS
-    '#ec268f': { 'tipo': 'ADESIVO', 'nome_material': 'Adesivo_Padrao', 'extrusao': 0.0001, 'roughness': 0.1, 'transmission': 0.4, 'ior': 1.3 }
+    '#ec268f': { 'tipo': 'ADESIVO', 'nome_material': 'Adesivo_Padrao', 'extrusao': 0.0001, 'roughness': 0.002, 'transmission': 0.5, 'ior': 1.3 }
 }
 
 # --- 2. FUNÇÕES AUXILIARES ---
@@ -45,7 +45,17 @@ def hex_para_rgba(hex_color, alpha=1.0):
     if not hex_color or not hex_color.startswith('#'): return (1.0, 1.0, 1.0, alpha)
     hex_color = hex_color.lstrip('#').lower()
     r, g, b = int(hex_color[0:2], 16)/255.0, int(hex_color[2:4], 16)/255.0, int(hex_color[4:6], 16)/255.0
-    fator_cmyk = 0.55
+    fator_cmyk = 0.40
+    r, g, b = r * fator_cmyk, g * fator_cmyk, b * fator_cmyk
+
+    def srgb_para_linear(c): return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+    return (srgb_para_linear(r), srgb_para_linear(g), srgb_para_linear(b), alpha)
+
+def hex_para_rgba_no(hex_color, alpha=1.0):
+    if not hex_color or not hex_color.startswith('#'): return (1.0, 1.0, 1.0, alpha)
+    hex_color = hex_color.lstrip('#').lower()
+    r, g, b = int(hex_color[0:2], 16)/255.0, int(hex_color[2:4], 16)/255.0, int(hex_color[4:6], 16)/255.0
+    fator_cmyk = 0.90
     r, g, b = r * fator_cmyk, g * fator_cmyk, b * fator_cmyk
 
     def srgb_para_linear(c): return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
@@ -338,8 +348,10 @@ def automatizar_trofeu_svg(caminho_svg):
         else:
             bsdf = nodes.get("Principled BSDF")
             pino_cor = 'Base Color' 
-
-        cor_svg = hex_para_rgba(dados['preenchimento']) if dados['preenchimento'] != 'Nenhum' else (0.8, 0.6, 0.4, 1.0)
+        if nome_material == 'Acrilico_transparente':
+            cor_svg = hex_para_rgba_no(dados['preenchimento']) if dados['preenchimento'] != 'Nenhum' else (0.8, 0.6, 0.4, 1.0)
+        else:
+            cor_svg = hex_para_rgba(dados['preenchimento']) if dados['preenchimento'] != 'Nenhum' else (0.8, 0.6, 0.4, 1.0)
 
         if tipo_material == 'ADESIVO' and imagens_disponiveis:
             caminho_imagem = imagens_disponiveis[idx_imagem_atual % len(imagens_disponiveis)]
@@ -565,7 +577,7 @@ def automatizar_trofeu_svg(caminho_svg):
 
         bpy.context.scene.camera = cam_principal
 
-meu_svg = r"F:\Backup Aroni 29-05-2021\Publico\2026\CATALOGO\KART\KAR25008\SVG\KAR25008.svg"
+meu_svg = r"F:\Backup Aroni 29-05-2021\Publico\2026\CATALOGO\KART\KAR25007\SVG\KAR25007.svg"
 
 automatizar_trofeu_svg(meu_svg)
 renderBlenderImages(RENDERIZAR_AUTOMATICAMENTE,PASTA_DO_SCRIPT, meu_svg)
