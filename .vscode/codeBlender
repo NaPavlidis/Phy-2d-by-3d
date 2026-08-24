@@ -21,11 +21,14 @@ ONRENDER = False
 
 REGRAS_MATERIAIS = {    
     # ACRÍLICOS (Qualquer cor com tipo 'ACRILICO' vai herdar estas propriedades)
-    '#ed3237': { 'tipo': 'ACRILICO', 'nome_material': 'Acrilico_Vermelho', 'extrusao': 0.001, 'roughness': 0.05, 'transmission': 1.0, 'ior': 1.49 },
+    '#ed3237': { 'tipo': 'ACRILICO', 'nome_material': 'acrilico_padrão', 'extrusao': 0.001, 'roughness': 0.05, 'transmission': 1.0, 'ior': 1.49 },
+    '#fff212': { 'tipo': 'ACRILICO', 'nome_material': 'Acrilico_transparente', 'extrusao': 0.001, 'roughness': 0.05, 'transmission': 1.0, 'ior': 2 },
+        
     
     # MDFs (Qualquer variação de MDF)
     '#fefefe': { 'tipo': 'MDF', 'nome_material': 'MDF_3mm', 'extrusao': 0.003, 'roughness': 0.3, 'transmission': 0.0, 'ior': 1.2},
     '#e6e7e8': { 'tipo': 'MDF', 'nome_material': 'MDF_6mm', 'extrusao': 0.006, 'roughness': 0.3, 'transmission': 0.0, 'ior': 1.2},
+    '#373435': { 'tipo': 'MDF', 'nome_material': 'PLOTTER', 'extrusao': 0.0001, 'roughness': 0.3, 'transmission': 0.0, 'ior': 1.2},
                 
     # BASES
     "#f58634": { 'tipo': 'BASE', 'nome_material': 'Base_3MM', 'extrusao': 0.003, 'roughness': 0.3, 'transmission': 0.0, 'ior': 1.2 },
@@ -251,6 +254,7 @@ def automatizar_trofeu_svg(caminho_svg):
         cor_contorno = dados['contorno']
         regra = REGRAS_MATERIAIS[cor_contorno]
         tipo_material = regra['tipo']
+        nome_material = regra['nome_material']
 
         min_x, max_x, min_y, max_y = obter_caixa_de_colisao(obj)
         pontos_de_teste = []
@@ -317,12 +321,20 @@ def automatizar_trofeu_svg(caminho_svg):
 
         if tipo_material == 'ACRILICO':
             node_principled = nodes.get("Principled BSDF")
-            if node_principled: nodes.remove(node_principled)
-            bsdf = nodes.new('ShaderNodeBsdfGlossy')
-            bsdf.location = (10, 300)
-            node_output = nodes.get("Material Output")
-            links.new(bsdf.outputs['BSDF'], node_output.inputs['Surface'])
-            pino_cor = 'Color' 
+            if nome_material == 'Acrilico_transparente':
+                if node_principled: nodes.remove(node_principled)
+                bsdf = nodes.new('ShaderNodeBsdfGlass')
+                bsdf.location = (10, 300)
+                node_output = nodes.get("Material Output")
+                links.new(bsdf.outputs['BSDF'], node_output.inputs['Surface'])
+                pino_cor = 'Color' 
+            else:
+                if node_principled: nodes.remove(node_principled)
+                bsdf = nodes.new('ShaderNodeBsdfGlossy')
+                bsdf.location = (10, 300)
+                node_output = nodes.get("Material Output")
+                links.new(bsdf.outputs['BSDF'], node_output.inputs['Surface'])
+                pino_cor = 'Color' 
         else:
             bsdf = nodes.get("Principled BSDF")
             pino_cor = 'Base Color' 
@@ -553,7 +565,7 @@ def automatizar_trofeu_svg(caminho_svg):
 
         bpy.context.scene.camera = cam_principal
 
-meu_svg = r"F:\\Backup Aroni 29-05-2021\\Publico\\2026\\3d\\arquivos\\esquadrão\\esquadrão.svg"
+meu_svg = r"F:\Backup Aroni 29-05-2021\Publico\2026\CATALOGO\KART\KAR25008\SVG\KAR25008.svg"
 
 automatizar_trofeu_svg(meu_svg)
 renderBlenderImages(RENDERIZAR_AUTOMATICAMENTE,PASTA_DO_SCRIPT, meu_svg)
