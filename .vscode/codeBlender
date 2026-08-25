@@ -43,7 +43,7 @@ REGRAS_MATERIAIS = {
 # --- 2. FUNÇÕES AUXILIARES ---
 def hex_para_rgba(hex_color, alpha=1.0):
     if not hex_color or not hex_color.startswith('#'): return (1.0, 1.0, 1.0, alpha)
-    hex_color = hex_color.lstrip('#').lower()
+    hex_color = hex_color.lstrip('#').lower()       
     r, g, b = int(hex_color[0:2], 16)/255.0, int(hex_color[2:4], 16)/255.0, int(hex_color[4:6], 16)/255.0
     fator_cmyk = 0.40
     r, g, b = r * fator_cmyk, g * fator_cmyk, b * fator_cmyk
@@ -577,7 +577,7 @@ def automatizar_trofeu_svg(caminho_svg):
 
         bpy.context.scene.camera = cam_principal
 
-meu_svg = r"F:\Backup Aroni 29-05-2021\Publico\2026\CATALOGO\KART\KAR25007\SVG\KAR25007.svg"
+meu_svg = r"F:\Backup Aroni 29-05-2021\Publico\2026\08.AGOSTO\24\gt\SVG\gt2.svg"
 
 automatizar_trofeu_svg(meu_svg)
 renderBlenderImages(RENDERIZAR_AUTOMATICAMENTE,PASTA_DO_SCRIPT, meu_svg)
