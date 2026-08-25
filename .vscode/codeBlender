@@ -577,7 +577,7 @@ def automatizar_trofeu_svg(caminho_svg):
 
         bpy.context.scene.camera = cam_principal
 
-meu_svg = r"F:\Backup Aroni 29-05-2021\Publico\2026\08.AGOSTO\24\gt\SVG\gt2.svg"
+meu_svg = r"F:\Backup Aroni 29-05-2021\Publico\2026\08.AGOSTO\24\gt\SVG\gt3.svg"
 
 automatizar_trofeu_svg(meu_svg)
 renderBlenderImages(RENDERIZAR_AUTOMATICAMENTE,PASTA_DO_SCRIPT, meu_svg)
