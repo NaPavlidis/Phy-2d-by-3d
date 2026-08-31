@@ -14,52 +14,21 @@ class VectorConvertProApp(tk.Tk):
         self.geometry("1100x750")
         self.configure(bg=corBackground)  # Fundo principal escuro
 
-        # Estrutura Principal (Grid Root)
+        # lateral
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(1, weight=1)
 
-        #self._build_navbar()
+        #meio
         self._build_sidebar()
-        if bar_activated == 1 :
-            self._build_main_content()
+        if bar_activated == 0 :
+            self._build_Enviar()
+        elif bar_activated == 1 :
+            self._build_configurações()
         elif bar_activated == 2 :
-            self._build_configurações()
-        elif bar_activated == 3 :
-            self._build_configurações()
-                
-        self._build_footer()
+            self._build_Finalização()
 
-    def _build_navbar(self):
-        # Top Bar Header
-        navbar = tk.Frame(self, bg="#0F141C", height=50, padx=20, pady=10)
-        navbar.grid(row=0, column=0, columnspan=2, sticky="ew")
-
-        # Logo / Título
-        logo_label = tk.Label(
-            navbar, 
-            text="2D by 3d Blender", 
-            fg="#4C9EEB", 
-            bg="#0F141C", 
-            font=("Helvetica", 14, "bold")
-        )
-        logo_label.pack(side="left", padx=10)
-
-        # Ícones do topo (Ações à direita)
-        right_icons_frame = tk.Frame(navbar, bg="#0F141C")
-        right_icons_frame.pack(side="right", padx=10)
-
-        for icon in ["?", "⚙", "👤"]:
-            btn = tk.Button(
-                right_icons_frame, 
-                text=icon, 
-                fg= corTexto, 
-                bg=corTextoEscuro, 
-                bd=0, 
-                font=("Helvetica", 12),
-                activebackground="#1A202C",
-                activeforeground="#FFFFFF"
-            )
-            btn.pack(side="left", padx=8)
+        #rodapé   
+        #self._build_footer()
 
     def _build_sidebar(self):
         # Painel Lateral Esquerdo
@@ -85,12 +54,18 @@ class VectorConvertProApp(tk.Tk):
 
         # Botões do Menu Lateral
         menu_items = [
-            (" Configurações", False),
-            (" Enviar", True),  # Ativo na imagem
-            (" Finalização", False)
+            (" Configurações", False, 0),
+            (" Enviar", False, 1),  # Ativo na imagem
+            (" Finalização", False, 2)
         ]
 
-        for text, is_active in menu_items:
+        for text, is_active, value in menu_items:
+            if value == bar_activated:
+                is_active == True 
+                print(value)
+            else:
+                is_active == False
+
             bg_color = "#1E2638" if is_active else "#121824"
             fg_color = "#38BDF8" if is_active else corTexto
             
@@ -124,7 +99,7 @@ class VectorConvertProApp(tk.Tk):
             ("3", "DOWNLOAD", False)
         ]
 
-    def _build_main_content(self):
+    def _build_Enviar(self):
         # Área do Conteúdo Principal
         main_frame = tk.Frame(self, bg=corBackground)
         main_frame.grid(row=1, column=1, sticky="nsew", padx=40, pady=20)
@@ -220,6 +195,21 @@ class VectorConvertProApp(tk.Tk):
                 font=("Consolas", 9), 
                 anchor="w"
             ).pack(fill="x", pady=2)
+
+    def _build_Finalização(self):
+            main_frame = tk.Frame(self, bg=corBackground)
+            main_frame.grid(row=1, column=1, sticky="nsew", padx=40, pady=20)
+        
+            # --- STEPPER DE PROGRESSO TOP ---
+            stepper_frame = tk.Frame(main_frame, bg=corBackground)
+            stepper_frame.pack(fill="x", pady=(10, 30))
+        
+            # Passos (Etapas 1, 2, 3)
+            steps = [
+                ("1", "Configurações", True),
+                ("2", "PROCESSING", False),
+                ("3", "DOWNLOAD", False)
+            ]
 
     def _build_footer(self):
         # Rodapé inferior
