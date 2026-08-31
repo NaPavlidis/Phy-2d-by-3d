@@ -1,0 +1,254 @@
+import tkinter as tk
+from tkinter import ttk
+
+corTexto = "#A0AEC0"
+corTextoEscuro = '#080C14' 
+corBackground = "#0B0F17"   
+
+bar_activated = 1
+
+class VectorConvertProApp(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("2D by 3d Blender")
+        self.geometry("1100x750")
+        self.configure(bg=corBackground)  # Fundo principal escuro
+
+        # Estrutura Principal (Grid Root)
+        self.grid_rowconfigure(1, weight=1)
+        self.grid_columnconfigure(1, weight=1)
+
+        #self._build_navbar()
+        self._build_sidebar()
+        if bar_activated == 1 :
+            self._build_main_content()
+        elif bar_activated == 2 :
+            self._build_configurações()
+        elif bar_activated == 3 :
+            self._build_configurações()
+                
+        self._build_footer()
+
+    def _build_navbar(self):
+        # Top Bar Header
+        navbar = tk.Frame(self, bg="#0F141C", height=50, padx=20, pady=10)
+        navbar.grid(row=0, column=0, columnspan=2, sticky="ew")
+
+        # Logo / Título
+        logo_label = tk.Label(
+            navbar, 
+            text="2D by 3d Blender", 
+            fg="#4C9EEB", 
+            bg="#0F141C", 
+            font=("Helvetica", 14, "bold")
+        )
+        logo_label.pack(side="left", padx=10)
+
+        # Ícones do topo (Ações à direita)
+        right_icons_frame = tk.Frame(navbar, bg="#0F141C")
+        right_icons_frame.pack(side="right", padx=10)
+
+        for icon in ["?", "⚙", "👤"]:
+            btn = tk.Button(
+                right_icons_frame, 
+                text=icon, 
+                fg= corTexto, 
+                bg=corTextoEscuro, 
+                bd=0, 
+                font=("Helvetica", 12),
+                activebackground="#1A202C",
+                activeforeground="#FFFFFF"
+            )
+            btn.pack(side="left", padx=8)
+
+    def _build_sidebar(self):
+        # Painel Lateral Esquerdo
+        sidebar = tk.Frame(self, bg="#121824", width=220)
+        sidebar.grid(row=1, column=0, sticky="nsew")
+        sidebar.pack_propagate(False)
+
+        # Cabeçalho da Sidebar
+        header_frame = tk.Frame(sidebar, bg="#121824", pady=20, padx=15)
+        header_frame.pack(fill="x")
+
+        tk.Label(
+            header_frame, 
+            text="SVG Converter", 
+            fg="#FFFFFF", 
+            bg="#121824", 
+            font=("Helvetica", 13, "bold"), 
+            anchor="w"
+        ).pack(fill="x")
+
+        # Divisor
+        tk.Frame(sidebar, bg="#1A202C", height=1).pack(fill="x", pady=5)
+
+        # Botões do Menu Lateral
+        menu_items = [
+            (" Configurações", False),
+            (" Enviar", True),  # Ativo na imagem
+            (" Finalização", False)
+        ]
+
+        for text, is_active in menu_items:
+            bg_color = "#1E2638" if is_active else "#121824"
+            fg_color = "#38BDF8" if is_active else corTexto
+            
+            btn = tk.Button(
+                sidebar, 
+                text=text, 
+                fg=fg_color, 
+                bg=bg_color, 
+                bd=0, 
+                anchor="w", 
+                padx=20, 
+                pady=12,
+                font=("Helvetica", 10, "bold" if is_active else "normal"),
+                activebackground="#1E2638",
+                activeforeground="#FFFFFF"
+            )
+            btn.pack(fill="x", pady=2)
+
+    def _build_configurações(self):
+        main_frame = tk.Frame(self, bg=corBackground)
+        main_frame.grid(row=1, column=1, sticky="nsew", padx=40, pady=20)
+    
+        # --- STEPPER DE PROGRESSO TOP ---
+        stepper_frame = tk.Frame(main_frame, bg=corBackground)
+        stepper_frame.pack(fill="x", pady=(10, 30))
+    
+        # Passos (Etapas 1, 2, 3)
+        steps = [
+            ("1", "Configurações", True),
+            ("2", "PROCESSING", False),
+            ("3", "DOWNLOAD", False)
+        ]
+
+    def _build_main_content(self):
+        # Área do Conteúdo Principal
+        main_frame = tk.Frame(self, bg=corBackground)
+        main_frame.grid(row=1, column=1, sticky="nsew", padx=40, pady=20)
+
+        # --- STEPPER DE PROGRESSO TOP ---
+        stepper_frame = tk.Frame(main_frame, bg=corBackground)
+        stepper_frame.pack(fill="x", pady=(10, 30))
+
+        # Passos (Etapas 1, 2, 3)
+        steps = [
+            ("1", "Configurações", True),
+            ("2", "PROCESSING", True),
+            ("3", "DOWNLOAD", False)
+        ]
+
+        stepper_inner = tk.Frame(stepper_frame, bg=corBackground)
+        stepper_inner.pack(anchor="center")
+
+        for idx, (num, label, completed) in enumerate(steps):
+            step_item = tk.Frame(stepper_inner, bg=corBackground)
+            step_item.pack(side="left", padx=20)
+
+            # Círculo do Step
+            circle_color = "#38BDF8" if completed else "#1E2638"
+            text_color = "#FFFFFF" if completed else "#4A5568"
+            
+            circle = tk.Label(
+                step_item, 
+                text="✓" if num == "1" else num, 
+                fg=text_color, 
+                bg=circle_color, 
+                width=3, 
+                height=1, 
+                font=("Helvetica", 10, "bold")
+            )
+            circle.pack()
+
+            # Rótulo do Step
+            tk.Label(
+                step_item, 
+                text=label, 
+                fg=text_color, 
+                bg=corBackground, 
+                font=("Helvetica", 8, "bold")
+            ).pack(pady=(5, 0))
+
+    # --- CARD CENTRAL DE PROCESSAMENTO ---
+        card = tk.Frame(main_frame, bg="#121824", bd=1, relief="solid")
+        card.pack(fill="both", expand=True, padx=20, pady=10)
+
+        # Elemento Gráfico (Círculo de Progresso Customizado)
+        progress_canvas = tk.Canvas(card, width=160, height=160, bg="#121824", highlightthickness=0)
+        progress_canvas.pack(pady=(30, 10))
+
+        # Círculo base (Trilho)
+        progress_canvas.create_arc(10, 10, 150, 150, start=0, extent=359, outline="#1E2638", width=8, style="arc")
+        # Círculo de progresso (68%)
+        progress_canvas.create_arc(10, 10, 150, 150, start=90, extent=-245, outline="#34D399", width=8, style="arc")
+        # Texto da Porcentagem Central
+        progress_canvas.create_text(80, 80, text="68%", fill="#FFFFFF", font=("Helvetica", 11, "bold"))
+
+        # Mensagem Principal
+        tk.Label(
+            card, 
+            text="Processando seu arquivo...", 
+            fg="#FFFFFF", 
+            bg="#121824", 
+            font=("Helvetica", 14, "bold")
+        ).pack(pady=(10, 5))
+
+        tk.Label(
+            card, 
+            text="🔄 Otimizando vetores", 
+            fg=corTexto, 
+            bg="#121824", 
+            font=("Helvetica", 10)
+        ).pack(pady=(0, 20))
+
+        # --- TERMINAL / CAIXA DE LOGS ---
+        log_box = tk.Frame(card, bg=corTextoEscuro, padx=15, pady=15)
+        log_box.pack(fill="x", padx=40, pady=(0, 30))
+
+        logs = [
+            ("> Importando Para o Blender", corTexto),
+        ]
+
+        for text, color in logs:
+            tk.Label(
+                log_box, 
+                text=text, 
+                fg=color, 
+                bg=corTextoEscuro, 
+                font=("Consolas", 9), 
+                anchor="w"
+            ).pack(fill="x", pady=2)
+
+    def _build_footer(self):
+        # Rodapé inferior
+        footer = tk.Frame(self, bg = corTextoEscuro, height=35, padx=20)
+        footer.grid(row=2, column=0, columnspan=2, sticky="ew")
+
+        # Texto da Esquerda
+        tk.Label(
+            footer, 
+            text="© All rights reserved.", 
+            fg=corTexto, 
+            bg=corTextoEscuro, 
+            font=("Helvetica", 8)
+        ).pack(side="left", padx=10, pady=8)
+
+        # Links da Direita
+        links_frame = tk.Frame(footer, bg=corTextoEscuro)
+        links_frame.pack(side="right", padx=10)
+
+        for link in ["Privacy Policy", "Terms of Service", "API Docs"]:
+            tk.Label(
+                links_frame, 
+                text=link, 
+                fg=corTexto, 
+                bg=corTextoEscuro, 
+                font=("Helvetica", 8),
+                cursor="hand2"
+            ).pack(side="left", padx=10)
+
+if __name__ == "__main__":
+    app = VectorConvertProApp()
+    app.mainloop()
