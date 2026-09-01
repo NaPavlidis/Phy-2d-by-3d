@@ -25,7 +25,7 @@ class SettingsWindow(tk.Toplevel):
     def _build_ui(self):
         tk.Label(self, text="⚙ Configurações e Estúdios Base", fg="#FFFFFF", bg="#121824", font=("Helvetica", 12, "bold")).pack(anchor="w", padx=20, pady=(15, 10))
 
-        # --- EXECUTÁVEL DO BLENDER ---
+        # Blender
         f_b = tk.Frame(self, bg="#121824")
         f_b.pack(fill="x", padx=20, pady=6)
         tk.Label(f_b, text="Executável do Blender (blender.exe):", fg="#A0AEC0", bg="#121824", font=("Helvetica", 9)).pack(anchor="w", pady=(0, 2))
@@ -34,7 +34,7 @@ class SettingsWindow(tk.Toplevel):
         tk.Entry(sub_b, textvariable=self.blender_path_var, bg="#080C14", fg="#FFFFFF", bd=1, relief="solid", insertbackground="#FFFFFF").pack(side="left", fill="x", expand=True, ipady=4, padx=(0, 8))
         tk.Button(sub_b, text="Buscar...", bg="#1E2638", fg="#FFFFFF", bd=0, padx=10, command=self._select_blender).pack(side="right")
 
-        # --- PASTA DE SAÍDA DOS RENDERS ---
+        # Output
         f_o = tk.Frame(self, bg="#121824")
         f_o.pack(fill="x", padx=20, pady=6)
         tk.Label(f_o, text="Pasta de Saída dos Renders:", fg="#A0AEC0", bg="#121824", font=("Helvetica", 9)).pack(anchor="w", pady=(0, 2))
@@ -43,7 +43,7 @@ class SettingsWindow(tk.Toplevel):
         tk.Entry(sub_o, textvariable=self.output_path_var, bg="#080C14", fg="#FFFFFF", bd=1, relief="solid", insertbackground="#FFFFFF").pack(side="left", fill="x", expand=True, ipady=4, padx=(0, 8))
         tk.Button(sub_o, text="Buscar...", bg="#1E2638", fg="#FFFFFF", bd=0, padx=10, command=self._select_output).pack(side="right")
 
-        # --- PASTA DOS ARQUIVOS .BLEND (ESTÚDIOS) ---
+        # Pasta Blend
         f_d = tk.Frame(self, bg="#121824")
         f_d.pack(fill="x", padx=20, pady=6)
         tk.Label(f_d, text="Pasta com os Arquivos .Blend (Estúdios Base):", fg="#A0AEC0", bg="#121824", font=("Helvetica", 9)).pack(anchor="w", pady=(0, 2))
@@ -52,7 +52,7 @@ class SettingsWindow(tk.Toplevel):
         tk.Entry(sub_d, textvariable=self.blend_dir_var, bg="#080C14", fg="#FFFFFF", bd=1, relief="solid", insertbackground="#FFFFFF").pack(side="left", fill="x", expand=True, ipady=4, padx=(0, 8))
         tk.Button(sub_d, text="Buscar...", bg="#1E2638", fg="#FFFFFF", bd=0, padx=10, command=self._select_blend_dir).pack(side="right")
 
-        # --- SELETOR (DROPDOWN) DO .BLEND ESPECÍFICO ---
+        # Dropdown Blend
         f_sel = tk.Frame(self, bg="#121824")
         f_sel.pack(fill="x", padx=20, pady=6)
         tk.Label(f_sel, text="Selecione o Estúdio Base (.blend) Ativo:", fg="#38BDF8", bg="#121824", font=("Helvetica", 9, "bold")).pack(anchor="w", pady=(0, 2))
@@ -63,7 +63,6 @@ class SettingsWindow(tk.Toplevel):
         self.blend_dropdown_menu.pack(fill="x")
         self._atualizar_lista_blends()
 
-        # Botão Salvar
         tk.Button(self, text="Salvar Configurações", bg="#38BDF8", fg="#FFFFFF", bd=0, font=("Helvetica", 10, "bold"), pady=8, command=self._save_settings).pack(fill="x", padx=20, pady=(15, 0))
 
     def _select_blender(self):
@@ -92,7 +91,6 @@ class SettingsWindow(tk.Toplevel):
         if arquivos_blend:
             for arq in arquivos_blend:
                 menu.add_command(label=arq, command=lambda value=arq: self.selected_blend_var.set(value))
-            # Se o atual não estiver na lista, define o primeiro
             if self.selected_blend_var.get() not in arquivos_blend:
                 self.selected_blend_var.set(arquivos_blend[0])
         else:
@@ -104,7 +102,7 @@ class SettingsWindow(tk.Toplevel):
         self.parent_app.output_path = self.output_path_var.get()
         self.parent_app.blend_dir = self.blend_dir_var.get()
         self.parent_app.selected_blend = self.selected_blend_var.get()
-        messagebox.showinfo("Sucesso", "Configurações e estúdio base salvos com sucesso!", parent=self)
+        messagebox.showinfo("Sucesso", "Configurações salvas com sucesso!", parent=self)
         self.destroy()
 
 
@@ -115,11 +113,15 @@ class VectorConvertProApp(tk.Tk):
         self.geometry("1100x750")
         self.configure(bg="#0B0F17")
 
-        self.blender_path = r"C:\Program Files\Blender Foundation\Blender 4.2\blender.exe"
+        self.blender_path = r"C:/Program Files/Blender Foundation/Blender 5.2/blender.exe"
         self.output_path = os.path.join(os.getcwd(), "imagens")
-        self.blend_dir = os.getcwd() # Pasta padrão onde está o script
+        self.blend_dir = os.getcwd()
         self.selected_blend = ""
         self.svg_selecionado = ""
+        
+        # Variáveis dos Checkboxes
+        self.render_auto_var = tk.BooleanVar(value=True)
+        self.usar_textura_var = tk.BooleanVar(value=True) # Novo: Ativar/Desativar Texturização
 
         self.sidebar_buttons = {}
         self.screens = {}
@@ -204,13 +206,27 @@ class VectorConvertProApp(tk.Tk):
         card = tk.Frame(screen, bg="#121824", bd=1, relief="solid")
         card.pack(fill="both", expand=True, padx=20, pady=10)
 
-        tk.Label(card, text="Faça o upload do seu arquivo SVG", fg="#FFFFFF", bg="#121824", font=("Helvetica", 14, "bold")).pack(pady=(60, 10))
+        tk.Label(card, text="Faça o upload do seu arquivo SVG", fg="#FFFFFF", bg="#121824", font=("Helvetica", 14, "bold")).pack(pady=(30, 10))
         
         self.lbl_arquivo_selecionado = tk.Label(card, text="Nenhum arquivo selecionado", fg="#A0AEC0", bg="#121824", font=("Helvetica", 10))
         self.lbl_arquivo_selecionado.pack(pady=5)
 
         btn_select = tk.Button(card, text="Selecionar Arquivo SVG", fg="#FFFFFF", bg="#38BDF8", bd=0, padx=20, pady=10, font=("Helvetica", 10, "bold"), command=self._selecionar_svg)
-        btn_select.pack(pady=10)
+        btn_select.pack(pady=15)
+
+        # --- CHECKBOX 1: RENDERIZAÇÃO AUTOMÁTICA ---
+        chk_render = tk.Checkbutton(
+            card, text="Renderizar automaticamente após importar e montar", variable=self.render_auto_var, 
+            fg="#A0AEC0", bg="#121824", selectcolor="#080C14", activebackground="#121824", activeforeground="#FFFFFF", font=("Helvetica", 9)
+        )
+        chk_render.pack(pady=5)
+
+        # --- CHECKBOX 2: APLICAR TEXTURIZAÇÃO ---
+        chk_textura = tk.Checkbutton(
+            card, text="Aplicar texturas (Ex: madeira.jpg no MDF)", variable=self.usar_textura_var, 
+            fg="#A0AEC0", bg="#121824", selectcolor="#080C14", activebackground="#121824", activeforeground="#FFFFFF", font=("Helvetica", 9)
+        )
+        chk_textura.pack(pady=5)
 
     def _selecionar_svg(self):
         file_path = filedialog.askopenfilename(title="Selecionar SVG", filetypes=[("Arquivos SVG", "*.svg"), ("Todos", "*.*")])
@@ -224,30 +240,32 @@ class VectorConvertProApp(tk.Tk):
         threading.Thread(target=self._executar_blender_subprocess, daemon=True).start()
 
     def _executar_blender_subprocess(self):
-        caminho_engine = os.path.join(os.path.dirname(os.path.abspath(__file__)), "blender_engine.py")
+        diretorio_atual = os.path.dirname(os.path.abspath(__file__))
+        caminho_engine = os.path.join(diretorio_atual, "blender_engine.py")
 
-        # Monta o caminho completo do arquivo .blend selecionado
         caminho_blend_escolhido = ""
         if self.blend_dir and self.selected_blend and not self.selected_blend.startswith("Nenhum"):
             caminho_blend_escolhido = os.path.join(self.blend_dir, self.selected_blend)
 
         comando = [self.blender_path]
 
-        # Se houver um arquivo .blend selecionado válido, carrega ele primeiro
-        if caminho_blend_escolhido and os.path.exists(caminho_blend_escolhido):
-            comando.append(caminho_blend_escolhido)
+        if self.render_auto_var.get():
+            comando.append("--background")
 
-        # Adiciona o script Python e argumentos
+        # Repassa todos os parâmetros atualizados para o motor do Blender
         comando.extend([
             "--python", caminho_engine,
             "--",
             self.svg_selecionado,
-            self.output_path
+            self.output_path,
+            caminho_blend_escolhido,
+            str(self.render_auto_var.get()),
+            str(self.usar_textura_var.get())
         ])
 
         try:
-            print(f">>> Executando Blender com o estúdio: {self.selected_blend if caminho_blend_escolhido else 'Padrão'}")
-            processo = subprocess.Popen(comando, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            print(f">>> Executando Blender (Render: {self.render_auto_var.get()}, Textura: {self.usar_textura_var.get()})")
+            processo = subprocess.Popen(comando, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='ignore')
             for linha in processo.stdout:
                 print(linha, end="")
             processo.wait()
@@ -263,11 +281,11 @@ class VectorConvertProApp(tk.Tk):
         self.screens["processing"] = screen
 
         self._create_stepper(screen, active_step=2)
-        card = tk.Frame(screen, bg=("#121824"), bd=1, relief="solid")
+        card = tk.Frame(screen, bg="#121824", bd=1, relief="solid")
         card.pack(fill="both", expand=True, padx=20, pady=10)
 
         tk.Label(card, text="Processando Troféu no Blender...", fg="#FFFFFF", bg="#121824", font=("Helvetica", 14, "bold")).pack(pady=(60, 5))
-        tk.Label(card, text="🔄 Aplicando estúdio base, importando curvas e renderizando...", fg="#A0AEC0", bg="#121824", font=("Helvetica", 10)).pack(pady=(0, 20))
+        tk.Label(card, text="🔄 Aplicando estúdio base, importando curvas e montando malhas...", fg="#A0AEC0", bg="#121824", font=("Helvetica", 10)).pack(pady=(0, 20))
 
     def _build_download_screen(self):
         screen = tk.Frame(self.main_container, bg="#0B0F17")
@@ -278,10 +296,10 @@ class VectorConvertProApp(tk.Tk):
         card = tk.Frame(screen, bg="#121824", bd=1, relief="solid")
         card.pack(fill="both", expand=True, padx=20, pady=10)
 
-        tk.Label(card, text="Renderização Concluída com Sucesso!", fg="#34D399", bg="#121824", font=("Helvetica", 14, "bold")).pack(pady=(60, 10))
+        tk.Label(card, text="Processamento Concluído!", fg="#34D399", bg="#121824", font=("Helvetica", 14, "bold")).pack(pady=(60, 10))
         
         tk.Button(
-            card, text="Abrir Pasta de Imagens", fg="#FFFFFF", bg="#34D399", bd=0, padx=20, pady=10, font=("Helvetica", 10, "bold"),
+            card, text="Abrir Pasta de Imagens / Arquivos", fg="#FFFFFF", bg="#34D399", bd=0, padx=20, pady=10, font=("Helvetica", 10, "bold"),
             command=lambda: os.startfile(self.output_path) if os.path.exists(self.output_path) else None
         ).pack(pady=20)
 
