@@ -1,242 +1,398 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import filedialog, messagebox
 
-corTexto = "#A0AEC0"
-corTextoEscuro = '#080C14' 
-corBackground = "#0B0F17"   
+class SettingsWindow(tk.Toplevel):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.title("Configurações do Sistema")
+        self.geometry("550x320")
+        self.configure(bg="#121824")
+        self.resizable(False, False)
 
-bar_activated = 1
+        # Torna a janela modal (foca nela até ser fechada)
+        self.transient(parent)
+        self.grab_set()
+
+        # Variáveis para armazenar os caminhos
+        self.blender_path_var = tk.StringVar(value=getattr(parent, 'blender_path', ''))
+        self.output_path_var = tk.StringVar(value=getattr(parent, 'output_path', ''))
+
+        self._build_ui()
+
+    def _build_ui(self):
+        # Título da Janela
+        tk.Label(
+            self, 
+            text="⚙ Configurações de Caminhos", 
+            fg="#FFFFFF", 
+            bg="#121824", 
+            font=("Helvetica", 12, "bold")
+        ).pack(anchor="w", padx=20, pady=(20, 15))
+
+        # --- CAMINHO DO BLENDER ---
+        frame_blender = tk.Frame(self, bg="#121824")
+        frame_blender.pack(fill="x", padx=20, pady=8)
+
+        tk.Label(
+            frame_blender, 
+            text="Executável do Blender (blender.exe):", 
+            fg="#A0AEC0", 
+            bg="#121824", 
+            font=("Helvetica", 9)
+        ).pack(anchor="w", pady=(0, 4))
+
+        input_blender = tk.Frame(frame_blender, bg="#121824")
+        input_blender.pack(fill="x")
+
+        entry_blender = tk.Entry(
+            input_blender, 
+            textvariable=self.blender_path_var, 
+            bg="#080C14", 
+            fg="#FFFFFF", 
+            bd=1, 
+            relief="solid", 
+            insertbackground="#FFFFFF"
+        )
+        entry_blender.pack(side="left", fill="x", expand=True, ipady=4, padx=(0, 8))
+
+        btn_browse_blender = tk.Button(
+            input_blender, 
+            text="Buscar...", 
+            bg="#1E2638", 
+            fg="#FFFFFF", 
+            bd=0, 
+            padx=10, 
+            command=self._select_blender_path
+        )
+        btn_browse_blender.pack(side="right")
+
+        # --- CAMINHO DE DESTINO DOS RENDERIZADOS ---
+        frame_output = tk.Frame(self, bg="#121824")
+        frame_output.pack(fill="x", padx=20, pady=8)
+
+        tk.Label(
+            frame_output, 
+            text="Pasta de Destino das Renderizações:", 
+            fg="#A0AEC0", 
+            bg="#121824", 
+            font=("Helvetica", 9)
+        ).pack(anchor="w", pady=(0, 4))
+
+        input_output = tk.Frame(frame_output, bg="#121824")
+        input_output.pack(fill="x")
+
+        entry_output = tk.Entry(
+            input_output, 
+            textvariable=self.output_path_var, 
+            bg="#080C14", 
+            fg="#FFFFFF", 
+            bd=1, 
+            relief="solid", 
+            insertbackground="#FFFFFF"
+        )
+        entry_output.pack(side="left", fill="x", expand=True, ipady=4, padx=(0, 8))
+
+        btn_browse_output = tk.Button(
+            input_output, 
+            text="Buscar...", 
+            bg="#1E2638", 
+            fg="#FFFFFF", 
+            bd=0, 
+            padx=10, 
+            command=self._select_output_path
+        )
+        btn_browse_output.pack(side="right")
+
+        # --- BOTÃO DE SALVAR ---
+        btn_save = tk.Button(
+            self, 
+            text="Salvar Configurações", 
+            bg="#38BDF8", 
+            fg="#FFFFFF", 
+            bd=0, 
+            font=("Helvetica", 10, "bold"), 
+            pady=8,
+            command=self._save_settings
+        )
+        btn_save.pack(fill="x", padx=20, pady=(20, 0))
+
+    def _select_blender_path(self):
+        file_path = filedialog.askopenfilename(
+            title="Selecione o executável do Blender",
+            filetypes=[("Executável Blender", "blender.exe"), ("Todos os Arquivos", "*.*")]
+        )
+        if file_path:
+            self.blender_path_var.set(file_path)
+
+    def _select_output_path(self):
+        folder_path = filedialog.askdirectory(title="Selecione a Pasta de Saída dos Renders")
+        if folder_path:
+            self.output_path_var.set(folder_path)
+
+    def _save_settings(self):
+        # Salva as variáveis na instância principal
+        self.master.blender_path = self.blender_path_var.get()
+        self.master.output_path = self.output_path_var.get()
+
+        messagebox.showinfo("Sucesso", "Configurações salvas com sucesso!", parent=self)
+        self.destroy()
+
 
 class VectorConvertProApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("2D by 3d Blender")
+        self.title("VectorConvert Pro")
         self.geometry("1100x750")
-        self.configure(bg=corBackground)  # Fundo principal escuro
+        self.configure(bg="#0B0F17")
 
-        # lateral
+        # Variáveis globais de caminhos para o projeto
+        self.blender_path = ""
+        self.output_path = ""
+
+        # Dicionários de controle
+        self.sidebar_buttons = {}
+        self.screens = {}
+
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(1, weight=1)
 
-        #meio
+        self._build_navbar()
         self._build_sidebar()
-        if bar_activated == 0 :
-            self._build_Enviar()
-        elif bar_activated == 1 :
-            self._build_configurações()
-        elif bar_activated == 2 :
-            self._build_Finalização()
+        
+        self.main_container = tk.Frame(self, bg="#0B0F17")
+        self.main_container.grid(row=1, column=1, sticky="nsew", padx=40, pady=20)
+        self.main_container.grid_rowconfigure(0, weight=1)
+        self.main_container.grid_columnconfigure(0, weight=1)
 
-        #rodapé   
-        #self._build_footer()
+        self._build_upload_screen()
+        self._build_processing_screen()
+        self._build_download_screen()
+
+        self._build_footer()
+        self._show_screen("processing")
+
+    def _build_navbar(self):
+        navbar = tk.Frame(self, bg="#0F141C", height=50, padx=20, pady=10)
+        navbar.grid(row=0, column=0, columnspan=2, sticky="ew")
+
+        logo_label = tk.Label(
+            navbar, 
+            text="VectorConvert Pro", 
+            fg="#4C9EEB", 
+            bg="#0F141C", 
+            font=("Helvetica", 14, "bold")
+        )
+        logo_label.pack(side="left", padx=10)
+
+        right_icons_frame = tk.Frame(navbar, bg="#0F141C")
+        right_icons_frame.pack(side="right", padx=10)
+
+        # Botão de Ajuda
+        tk.Button(
+            right_icons_frame, text="?", fg="#A0AEC0", bg="#0F141C", bd=0, 
+            font=("Helvetica", 12), activebackground="#1A202C", activeforeground="#FFFFFF"
+        ).pack(side="left", padx=8)
+
+        # Botão de Configurações (Abre a janela Toplevel)
+        btn_settings = tk.Button(
+            right_icons_frame, 
+            text="⚙", 
+            fg="#A0AEC0", 
+            bg="#0F141C", 
+            bd=0, 
+            font=("Helvetica", 12),
+            activebackground="#1A202C", 
+            activeforeground="#FFFFFF",
+            command=self._open_settings_window
+        )
+        btn_settings.pack(side="left", padx=8)
+
+        # Botão de Perfil
+        tk.Button(
+            right_icons_frame, text="👤", fg="#A0AEC0", bg="#0F141C", bd=0, 
+            font=("Helvetica", 12), activebackground="#1A202C", activeforeground="#FFFFFF"
+        ).pack(side="left", padx=8)
+
+    def _open_settings_window(self):
+        # Abre a janela de configurações
+        SettingsWindow(self)
 
     def _build_sidebar(self):
-        # Painel Lateral Esquerdo
         sidebar = tk.Frame(self, bg="#121824", width=220)
         sidebar.grid(row=1, column=0, sticky="nsew")
         sidebar.pack_propagate(False)
 
-        # Cabeçalho da Sidebar
         header_frame = tk.Frame(sidebar, bg="#121824", pady=20, padx=15)
         header_frame.pack(fill="x")
 
         tk.Label(
-            header_frame, 
-            text="SVG Converter", 
-            fg="#FFFFFF", 
-            bg="#121824", 
-            font=("Helvetica", 13, "bold"), 
-            anchor="w"
+            header_frame, text="SVG Converter", fg="#FFFFFF", bg="#121824", 
+            font=("Helvetica", 13, "bold"), anchor="w"
+        ).pack(fill="x")
+        
+        tk.Label(
+            header_frame, text="HIGH PRECISION TOOL", fg="#4A5568", bg="#121824", 
+            font=("Helvetica", 8, "bold"), anchor="w"
         ).pack(fill="x")
 
-        # Divisor
         tk.Frame(sidebar, bg="#1A202C", height=1).pack(fill="x", pady=5)
 
-        # Botões do Menu Lateral
-        menu_items = [
-            (" Configurações", False, 0),
-            (" Enviar", False, 1),  # Ativo na imagem
-            (" Finalização", False, 2)
-        ]
+        menu_items = {
+            "upload": (" Upload", False),
+            "processing": (" Processing", True),
+            "download": (" Download", False)
+        }
 
-        for text, is_active, value in menu_items:
-            if value == bar_activated:
-                is_active == True 
-                print(value)
-            else:
-                is_active == False
-
+        for key, (text, is_active) in menu_items.items():
             bg_color = "#1E2638" if is_active else "#121824"
-            fg_color = "#38BDF8" if is_active else corTexto
+            fg_color = "#38BDF8" if is_active else "#A0AEC0"
             
             btn = tk.Button(
-                sidebar, 
-                text=text, 
-                fg=fg_color, 
-                bg=bg_color, 
-                bd=0, 
-                anchor="w", 
-                padx=20, 
-                pady=12,
-                font=("Helvetica", 10, "bold" if is_active else "normal"),
-                activebackground="#1E2638",
-                activeforeground="#FFFFFF"
+                sidebar, text=text, fg=fg_color, bg=bg_color, bd=0, anchor="w", 
+                padx=20, pady=12, font=("Helvetica", 10, "bold" if is_active else "normal"),
+                activebackground="#1E2638", activeforeground="#FFFFFF",
+                command=lambda k=key: self._show_screen(k)
             )
             btn.pack(fill="x", pady=2)
+            self.sidebar_buttons[key] = btn
 
-    def _build_configurações(self):
-        main_frame = tk.Frame(self, bg=corBackground)
-        main_frame.grid(row=1, column=1, sticky="nsew", padx=40, pady=20)
-    
-        # --- STEPPER DE PROGRESSO TOP ---
-        stepper_frame = tk.Frame(main_frame, bg=corBackground)
-        stepper_frame.pack(fill="x", pady=(10, 30))
-    
-        # Passos (Etapas 1, 2, 3)
-        steps = [
-            ("1", "Configurações", True),
-            ("2", "PROCESSING", False),
-            ("3", "DOWNLOAD", False)
-        ]
+    def _show_screen(self, screen_key):
+        for key, btn in self.sidebar_buttons.items():
+            if key == screen_key:
+                btn.configure(bg="#1E2638", fg="#38BDF8", font=("Helvetica", 10, "bold"))
+            else:
+                btn.configure(bg="#121824", fg="#A0AEC0", font=("Helvetica", 10, "normal"))
 
-    def _build_Enviar(self):
-        # Área do Conteúdo Principal
-        main_frame = tk.Frame(self, bg=corBackground)
-        main_frame.grid(row=1, column=1, sticky="nsew", padx=40, pady=20)
+        screen = self.screens[screen_key]
+        screen.tkraise()
 
-        # --- STEPPER DE PROGRESSO TOP ---
-        stepper_frame = tk.Frame(main_frame, bg=corBackground)
+    def _create_stepper(self, parent, active_step):
+        stepper_frame = tk.Frame(parent, bg="#0B0F17")
         stepper_frame.pack(fill="x", pady=(10, 30))
 
-        # Passos (Etapas 1, 2, 3)
-        steps = [
-            ("1", "Configurações", True),
-            ("2", "PROCESSING", True),
-            ("3", "DOWNLOAD", False)
-        ]
-
-        stepper_inner = tk.Frame(stepper_frame, bg=corBackground)
+        steps = [("1", "UPLOAD"), ("2", "PROCESSING"), ("3", "DOWNLOAD")]
+        stepper_inner = tk.Frame(stepper_frame, bg="#0B0F17")
         stepper_inner.pack(anchor="center")
 
-        for idx, (num, label, completed) in enumerate(steps):
-            step_item = tk.Frame(stepper_inner, bg=corBackground)
+        for idx, (num, label) in enumerate(steps, start=1):
+            step_item = tk.Frame(stepper_inner, bg="#0B0F17")
             step_item.pack(side="left", padx=20)
 
-            # Círculo do Step
+            completed = idx <= active_step
             circle_color = "#38BDF8" if completed else "#1E2638"
             text_color = "#FFFFFF" if completed else "#4A5568"
             
+            symbol = "✓" if idx < active_step else num
             circle = tk.Label(
-                step_item, 
-                text="✓" if num == "1" else num, 
-                fg=text_color, 
-                bg=circle_color, 
-                width=3, 
-                height=1, 
-                font=("Helvetica", 10, "bold")
+                step_item, text=symbol, fg=text_color, bg=circle_color, 
+                width=3, height=1, font=("Helvetica", 10, "bold")
             )
             circle.pack()
 
-            # Rótulo do Step
             tk.Label(
-                step_item, 
-                text=label, 
-                fg=text_color, 
-                bg=corBackground, 
+                step_item, text=label, fg=text_color, bg="#0B0F17", 
                 font=("Helvetica", 8, "bold")
             ).pack(pady=(5, 0))
 
-    # --- CARD CENTRAL DE PROCESSAMENTO ---
-        card = tk.Frame(main_frame, bg="#121824", bd=1, relief="solid")
+    def _build_upload_screen(self):
+        screen = tk.Frame(self.main_container, bg="#0B0F17")
+        screen.grid(row=0, column=0, sticky="nsew")
+        self.screens["upload"] = screen
+
+        self._create_stepper(screen, active_step=1)
+        card = tk.Frame(screen, bg="#121824", bd=1, relief="solid")
         card.pack(fill="both", expand=True, padx=20, pady=10)
 
-        # Elemento Gráfico (Círculo de Progresso Customizado)
+        tk.Label(
+            card, text="Faça o upload do seu arquivo SVG", fg="#FFFFFF", 
+            bg="#121824", font=("Helvetica", 14, "bold")
+        ).pack(pady=(60, 10))
+
+        btn_select = tk.Button(
+            card, text="Selecionar Arquivo", fg="#FFFFFF", bg="#38BDF8", bd=0, 
+            padx=20, pady=10, font=("Helvetica", 10, "bold")
+        )
+        btn_select.pack(pady=20)
+
+    def _build_processing_screen(self):
+        screen = tk.Frame(self.main_container, bg="#0B0F17")
+        screen.grid(row=0, column=0, sticky="nsew")
+        self.screens["processing"] = screen
+
+        self._create_stepper(screen, active_step=2)
+        card = tk.Frame(screen, bg="#121824", bd=1, relief="solid")
+        card.pack(fill="both", expand=True, padx=20, pady=10)
+
         progress_canvas = tk.Canvas(card, width=160, height=160, bg="#121824", highlightthickness=0)
         progress_canvas.pack(pady=(30, 10))
 
-        # Círculo base (Trilho)
         progress_canvas.create_arc(10, 10, 150, 150, start=0, extent=359, outline="#1E2638", width=8, style="arc")
-        # Círculo de progresso (68%)
         progress_canvas.create_arc(10, 10, 150, 150, start=90, extent=-245, outline="#34D399", width=8, style="arc")
-        # Texto da Porcentagem Central
         progress_canvas.create_text(80, 80, text="68%", fill="#FFFFFF", font=("Helvetica", 11, "bold"))
 
-        # Mensagem Principal
         tk.Label(
-            card, 
-            text="Processando seu arquivo...", 
-            fg="#FFFFFF", 
-            bg="#121824", 
-            font=("Helvetica", 14, "bold")
+            card, text="Processando seu arquivo...", fg="#FFFFFF", 
+            bg="#121824", font=("Helvetica", 14, "bold")
         ).pack(pady=(10, 5))
 
         tk.Label(
-            card, 
-            text="🔄 Otimizando vetores", 
-            fg=corTexto, 
-            bg="#121824", 
-            font=("Helvetica", 10)
+            card, text="🔄 Otimizando vetores", fg="#A0AEC0", 
+            bg="#121824", font=("Helvetica", 10)
         ).pack(pady=(0, 20))
 
-        # --- TERMINAL / CAIXA DE LOGS ---
-        log_box = tk.Frame(card, bg=corTextoEscuro, padx=15, pady=15)
+        log_box = tk.Frame(card, bg="#080C14", padx=15, pady=15)
         log_box.pack(fill="x", padx=40, pady=(0, 30))
 
         logs = [
-            ("> Importando Para o Blender", corTexto),
+            ("> Analisando nós e caminhos (2304 encontrados)...", "#A0AEC0"),
+            ("> Removendo redundâncias geométricas...", "#A0AEC0"),
+            ("> Consolidando atributos de cor...", "#A0AEC0"),
+            ("> Otimização de curva de Bézier: Concluída.", "#34D399"),
+            ("> Gerando payload final_", "#A0AEC0")
         ]
 
         for text, color in logs:
             tk.Label(
-                log_box, 
-                text=text, 
-                fg=color, 
-                bg=corTextoEscuro, 
-                font=("Consolas", 9), 
-                anchor="w"
+                log_box, text=text, fg=color, bg="#080C14", 
+                font=("Consolas", 9), anchor="w"
             ).pack(fill="x", pady=2)
 
-    def _build_Finalização(self):
-            main_frame = tk.Frame(self, bg=corBackground)
-            main_frame.grid(row=1, column=1, sticky="nsew", padx=40, pady=20)
-        
-            # --- STEPPER DE PROGRESSO TOP ---
-            stepper_frame = tk.Frame(main_frame, bg=corBackground)
-            stepper_frame.pack(fill="x", pady=(10, 30))
-        
-            # Passos (Etapas 1, 2, 3)
-            steps = [
-                ("1", "Configurações", True),
-                ("2", "PROCESSING", False),
-                ("3", "DOWNLOAD", False)
-            ]
+    def _build_download_screen(self):
+        screen = tk.Frame(self.main_container, bg="#0B0F17")
+        screen.grid(row=0, column=0, sticky="nsew")
+        self.screens["download"] = screen
+
+        self._create_stepper(screen, active_step=3)
+        card = tk.Frame(screen, bg="#121824", bd=1, relief="solid")
+        card.pack(fill="both", expand=True, padx=20, pady=10)
+
+        tk.Label(
+            card, text="Processamento Concluído com Sucesso!", fg="#34D399", 
+            bg="#121824", font=("Helvetica", 14, "bold")
+        ).pack(pady=(60, 10))
+
+        btn_download = tk.Button(
+            card, text="Baixar Arquivo Convertido", fg="#FFFFFF", bg="#34D399", bd=0, 
+            padx=20, pady=10, font=("Helvetica", 10, "bold")
+        )
+        btn_download.pack(pady=20)
 
     def _build_footer(self):
-        # Rodapé inferior
-        footer = tk.Frame(self, bg = corTextoEscuro, height=35, padx=20)
+        footer = tk.Frame(self, bg="#080C14", height=35, padx=20)
         footer.grid(row=2, column=0, columnspan=2, sticky="ew")
 
-        # Texto da Esquerda
         tk.Label(
-            footer, 
-            text="© All rights reserved.", 
-            fg=corTexto, 
-            bg=corTextoEscuro, 
-            font=("Helvetica", 8)
+            footer, text="© 2024 VectorConvert Pro. All rights reserved.", 
+            fg="#4A5568", bg="#080C14", font=("Helvetica", 8)
         ).pack(side="left", padx=10, pady=8)
 
-        # Links da Direita
-        links_frame = tk.Frame(footer, bg=corTextoEscuro)
+        links_frame = tk.Frame(footer, bg="#080C14")
         links_frame.pack(side="right", padx=10)
 
         for link in ["Privacy Policy", "Terms of Service", "API Docs"]:
             tk.Label(
-                links_frame, 
-                text=link, 
-                fg=corTexto, 
-                bg=corTextoEscuro, 
-                font=("Helvetica", 8),
-                cursor="hand2"
+                links_frame, text=link, fg="#A0AEC0", bg="#080C14", 
+                font=("Helvetica", 8), cursor="hand2"
             ).pack(side="left", padx=10)
 
 if __name__ == "__main__":
