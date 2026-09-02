@@ -8,7 +8,7 @@ class SettingsWindow(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
         self.title("Configurações do Sistema")
-        self.geometry("580x400")
+        self.geometry("580x460")
         self.configure(bg="#121824")
         self.resizable(False, False)
         self.transient(parent)
@@ -19,6 +19,7 @@ class SettingsWindow(tk.Toplevel):
         self.output_path_var = tk.StringVar(value=parent.output_path)
         self.blend_dir_var = tk.StringVar(value=parent.blend_dir)
         self.selected_blend_var = tk.StringVar(value=parent.selected_blend)
+        self.cycles_samples_var = tk.StringVar(value=str(parent.cycles_samples))
 
         self._build_ui()
 
@@ -27,7 +28,7 @@ class SettingsWindow(tk.Toplevel):
 
         # Blender
         f_b = tk.Frame(self, bg="#121824")
-        f_b.pack(fill="x", padx=20, pady=6)
+        f_b.pack(fill="x", padx=20, pady=5)
         tk.Label(f_b, text="Executável do Blender (blender.exe):", fg="#A0AEC0", bg="#121824", font=("Helvetica", 9)).pack(anchor="w", pady=(0, 2))
         sub_b = tk.Frame(f_b, bg="#121824")
         sub_b.pack(fill="x")
@@ -36,7 +37,7 @@ class SettingsWindow(tk.Toplevel):
 
         # Output
         f_o = tk.Frame(self, bg="#121824")
-        f_o.pack(fill="x", padx=20, pady=6)
+        f_o.pack(fill="x", padx=20, pady=5)
         tk.Label(f_o, text="Pasta de Saída dos Renders:", fg="#A0AEC0", bg="#121824", font=("Helvetica", 9)).pack(anchor="w", pady=(0, 2))
         sub_o = tk.Frame(f_o, bg="#121824")
         sub_o.pack(fill="x")
@@ -45,7 +46,7 @@ class SettingsWindow(tk.Toplevel):
 
         # Pasta Blend
         f_d = tk.Frame(self, bg="#121824")
-        f_d.pack(fill="x", padx=20, pady=6)
+        f_d.pack(fill="x", padx=20, pady=5)
         tk.Label(f_d, text="Pasta com os Arquivos .Blend (Estúdios Base):", fg="#A0AEC0", bg="#121824", font=("Helvetica", 9)).pack(anchor="w", pady=(0, 2))
         sub_d = tk.Frame(f_d, bg="#121824")
         sub_d.pack(fill="x")
@@ -54,7 +55,7 @@ class SettingsWindow(tk.Toplevel):
 
         # Dropdown Blend
         f_sel = tk.Frame(self, bg="#121824")
-        f_sel.pack(fill="x", padx=20, pady=6)
+        f_sel.pack(fill="x", padx=20, pady=5)
         tk.Label(f_sel, text="Selecione o Estúdio Base (.blend) Ativo:", fg="#38BDF8", bg="#121824", font=("Helvetica", 9, "bold")).pack(anchor="w", pady=(0, 2))
         
         self.blend_dropdown_menu = tk.OptionMenu(f_sel, self.selected_blend_var, "")
@@ -62,6 +63,12 @@ class SettingsWindow(tk.Toplevel):
         self.blend_dropdown_menu["menu"].config(bg="#121824", fg="#FFFFFF", activebackground="#38BDF8", activeforeground="#000000")
         self.blend_dropdown_menu.pack(fill="x")
         self._atualizar_lista_blends()
+
+        # Cycles Samples
+        f_samp = tk.Frame(self, bg="#121824")
+        f_samp.pack(fill="x", padx=20, pady=5)
+        tk.Label(f_samp, text="Qtd de Samples do Cycles (Ex: 128, 256):", fg="#A0AEC0", bg="#121824", font=("Helvetica", 9)).pack(anchor="w", pady=(0, 2))
+        tk.Entry(f_samp, textvariable=self.cycles_samples_var, bg="#080C14", fg="#FFFFFF", bd=1, relief="solid", insertbackground="#FFFFFF", width=20).pack(anchor="w", ipady=4)
 
         tk.Button(self, text="Salvar Configurações", bg="#38BDF8", fg="#FFFFFF", bd=0, font=("Helvetica", 10, "bold"), pady=8, command=self._save_settings).pack(fill="x", padx=20, pady=(15, 0))
 
@@ -102,6 +109,10 @@ class SettingsWindow(tk.Toplevel):
         self.parent_app.output_path = self.output_path_var.get()
         self.parent_app.blend_dir = self.blend_dir_var.get()
         self.parent_app.selected_blend = self.selected_blend_var.get()
+        try:
+            self.parent_app.cycles_samples = int(self.cycles_samples_var.get())
+        except ValueError:
+            self.parent_app.cycles_samples = 128
         messagebox.showinfo("Sucesso", "Configurações salvas com sucesso!", parent=self)
         self.destroy()
 
@@ -118,10 +129,10 @@ class VectorConvertProApp(tk.Tk):
         self.blend_dir = os.getcwd()
         self.selected_blend = ""
         self.svg_selecionado = ""
+        self.cycles_samples = 128 # Valor padrão de samples
         
-        # Variáveis dos Checkboxes
         self.render_auto_var = tk.BooleanVar(value=True)
-        self.usar_textura_var = tk.BooleanVar(value=True) # Novo: Ativar/Desativar Texturização
+        self.usar_textura_var = tk.BooleanVar(value=True)
 
         self.sidebar_buttons = {}
         self.screens = {}
@@ -214,14 +225,12 @@ class VectorConvertProApp(tk.Tk):
         btn_select = tk.Button(card, text="Selecionar Arquivo SVG", fg="#FFFFFF", bg="#38BDF8", bd=0, padx=20, pady=10, font=("Helvetica", 10, "bold"), command=self._selecionar_svg)
         btn_select.pack(pady=15)
 
-        # --- CHECKBOX 1: RENDERIZAÇÃO AUTOMÁTICA ---
         chk_render = tk.Checkbutton(
             card, text="Renderizar automaticamente após importar e montar", variable=self.render_auto_var, 
             fg="#A0AEC0", bg="#121824", selectcolor="#080C14", activebackground="#121824", activeforeground="#FFFFFF", font=("Helvetica", 9)
         )
         chk_render.pack(pady=5)
 
-        # --- CHECKBOX 2: APLICAR TEXTURIZAÇÃO ---
         chk_textura = tk.Checkbutton(
             card, text="Aplicar texturas (Ex: madeira.jpg no MDF)", variable=self.usar_textura_var, 
             fg="#A0AEC0", bg="#121824", selectcolor="#080C14", activebackground="#121824", activeforeground="#FFFFFF", font=("Helvetica", 9)
@@ -252,7 +261,7 @@ class VectorConvertProApp(tk.Tk):
         if self.render_auto_var.get():
             comando.append("--background")
 
-        # Repassa todos os parâmetros atualizados para o motor do Blender
+        # Repassa todos os parâmetros incluindo a quantidade de samples configurada
         comando.extend([
             "--python", caminho_engine,
             "--",
@@ -260,11 +269,12 @@ class VectorConvertProApp(tk.Tk):
             self.output_path,
             caminho_blend_escolhido,
             str(self.render_auto_var.get()),
-            str(self.usar_textura_var.get())
+            str(self.usar_textura_var.get()),
+            str(self.cycles_samples)
         ])
 
         try:
-            print(f">>> Executando Blender (Render: {self.render_auto_var.get()}, Textura: {self.usar_textura_var.get()})")
+            print(f">>> Executando Blender (Render: {self.render_auto_var.get()}, Textura: {self.usar_textura_var.get()}, Samples: {self.cycles_samples})")
             processo = subprocess.Popen(comando, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='ignore')
             for linha in processo.stdout:
                 print(linha, end="")
