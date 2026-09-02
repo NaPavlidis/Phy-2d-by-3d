@@ -15,9 +15,9 @@ REGRAS_MATERIAIS = {
         
     
     # MDFs (Qualquer variação de MDF)
-    '#fefefe': { 'tipo': 'MDF', 'nome_material': 'MDF_3mm', 'extrusao': 0.003, 'roughness': 0.01, 'transmission': 0.2, 'ior': 1.2},
-    '#e6e7e8': { 'tipo': 'MDF', 'nome_material': 'MDF_6mm', 'extrusao': 0.006, 'roughness': 0.01, 'transmission': 0.2, 'ior': 1.2},
-    '#373435': { 'tipo': 'MDF', 'nome_material': 'PLOTTER', 'extrusao': 0.001, 'roughness': 0.01, 'transmission': 0.2, 'ior': 1.2},
+    '#fefefe': { 'tipo': 'MDF', 'nome_material': 'MDF_3mm', 'extrusao': 0.003, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.15},
+    '#e6e7e8': { 'tipo': 'MDF', 'nome_material': 'MDF_6mm', 'extrusao': 0.006, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.15},
+    '#373435': { 'tipo': 'MDF', 'nome_material': 'PLOTTER', 'extrusao': 0.001, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.15},
                 
     # BASES
     "#f58634": { 'tipo': 'BASE', 'nome_material': 'Base_3MM', 'extrusao': 0.003, 'roughness': 0.2, 'transmission': 0.0, 'ior': 1.15 },
@@ -61,7 +61,7 @@ def criar_uv_perfeito(obj):
         v_uv = (v.co.y - min_y) / altura
         uv_layer[loop.index].uv = (u, v_uv)
 
-def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="", renderizar=True, usar_textura=True):
+def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="", renderizar=True, usar_textura=True, cycles_samples=128):
     # 1. Carrega o estúdio base se fornecido
     if caminho_blend and os.path.exists(caminho_blend):
         print(f">>> Carregando estúdio base: {caminho_blend}")
@@ -194,24 +194,20 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         elif obj.type == 'MESH':
             malhas_convertidas.append(obj)
 
-  objetos_importados = malhas_convertidas
+    objetos_importados = malhas_convertidas
     bpy.context.view_layer.update()
     
     pasta_script_atual = os.path.dirname(os.path.abspath(__file__))
 
-    # --- ORDENAÇÃO NUMÉRICA SEGURA (Corrige o bug alfabético 1, 10, 2 do Blender) ---
+    # --- FUNÇÃO AUXILIAR PARA LER O ID NUMÉRICO DO SVG ---
     def obter_id_numerico(obj):
         match = re.search(r'trofeu_shape_(\d+)', obj.name)
         return int(match.group(1)) if match else 9999
 
-    # Ordena os objetos estritamente pela ordem numérica correta do SVG
-    objetos_importados.sort(key=obter_id_numerico)
-
-    # --- MAPEAMENTO E ATRIBUIÇÃO DE REGRAS ---
+    # --- MAPEAMENTO RIGOROSO NA ORDEM EXATA DO SVG (Sem blocos fixos) ---
     elementos_mapeados = []
     
     for idx, obj in enumerate(objetos_importados):
-        # Mapeia diretamente usando o ID numérico ordenado
         num_id = obter_id_numerico(obj)
         nome_base = f"trofeu_shape_{num_id}" if num_id != 9999 else f"trofeu_shape_{idx+1}"
         
@@ -224,13 +220,7 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         regra = REGRAS_MATERIAIS[cor_contorno]
         tipo_material = regra['tipo']
         
-        # Prioridade estrita de montagem: 0 = Bases (chão), 1 = Corpo (MDF/Acrílico), 2 = Adesivos (topo)
-        if tipo_material in ['BASE', 'BASE_FINA']:
-            prioridade = 0
-        elif tipo_material in ['MDF', 'ACRILICO']:
-            prioridade = 1
-        else:
-            prioridade = 2
+        eh_base = tipo_material in ['BASE', 'BASE_FINA']
             
         elementos_mapeados.append({
             'obj': obj,
@@ -238,14 +228,17 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
             'dados': dados,
             'regra': regra,
             'tipo_material': tipo_material,
-            'prioridade': prioridade
+            'indice_svg': num_id if num_id != 9999 else idx,
+            'eh_base': eh_base
         })
 
-    # Ordena rigorosamente para que a base seja processada antes do corpo e adesivos
-    elementos_mapeados.sort(key=lambda x: x['prioridade'])
+    # --- ORDENAÇÃO POR CAMADAS DO SVG ---
+    # As bases vão primeiro para servirem de fundação, e o restante das peças segue a ordem de camadas do SVG.
+    elementos_mapeados.sort(key=lambda x: (0 if x['eh_base'] else 1, x['indice_svg']))
 
     idx_imagem_global = 0
     suporte_dos_objetos = {}
+
     # --- LOOP DE PROCESSAMENTO E MONTAGEM ORDENADA ---
     for item in elementos_mapeados:
         obj = item['obj']
@@ -523,12 +516,30 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
             shutil.rmtree(pasta_dest)
         os.makedirs(pasta_dest)
         
+        # --- BLINDAGEM DO CYCLES PARA BACKGROUND ---
+        scene = bpy.context.scene
+        scene.render.engine = 'CYCLES'
+        
+        # Configura o Cycles para usar a CPU em modo background (Evita o travamento de contexto da GPU)
+        try:
+            cycles_prefs = bpy.context.preferences.addons['cycles'].preferences
+            cycles_prefs.compute_device_type = 'NONE' # Força o uso seguro da CPU no subprocesso
+            scene.cycles.device = 'CPU'
+        except Exception:
+            pass
+            
+        # Otimizações para renderização rápida e limpa em background
+        scene.cycles.samples = int(cycles_samples) # Reduz o tempo de render mantendo alta qualidade
+        scene.cycles.use_denoising = True
+
         cameras = [bpy.data.objects.get("Camera_Principal"), bpy.data.objects.get("Camera_Esquerda"), bpy.data.objects.get("Camera_Direita")]
         for cam in cameras:
             if cam:
-                bpy.context.scene.camera = cam
-                bpy.context.scene.render.filepath = os.path.join(pasta_dest, f"{cam.name}.png")
+                scene.camera = cam
+                scene.render.filepath = os.path.join(pasta_dest, f"{cam.name}.png")
+                print(f">>> Renderizando câmera: {cam.name} via Cycles...")
                 bpy.ops.render.render(write_still=True)
+                
         print(f"Renders salvos em: {pasta_dest}")
     else:
         print(">>> Modo interativo ativo: O Blender permaneceu aberto com o troféu montado.")
@@ -547,5 +558,11 @@ if __name__ == "__main__":
         usar_textura = True
         if len(argv) > 4:
             usar_textura = argv[4].lower() == 'true'
-        
-        processar_svg_no_blender(caminho_svg, pasta_saida, caminho_blend, renderizar_automaticamente, usar_textura)
+            
+        cycles_samples = 128
+        if len(argv) > 5:
+            try:
+                cycles_samples = int(argv[5])
+            except:
+                cycles_samples = 128
+        processar_svg_no_blender(caminho_svg, pasta_saida, caminho_blend, renderizar_automaticamente, usar_textura, cycles_samples)
