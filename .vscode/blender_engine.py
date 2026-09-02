@@ -9,11 +9,24 @@ import shutil
 
 # --- REGRAS DE MATERIAIS AGRUPADOS POR TIPO ---
 REGRAS_MATERIAIS = {    
-    '#ed3237': { 'tipo': 'ACRILICO', 'nome_material': 'Acrilico_Vermelho', 'extrusao': 0.001, 'roughness': 0.05, 'transmission': 1.0, 'ior': 1.49 },
-    '#fefefe': { 'tipo': 'MDF', 'nome_material': 'MDF_Padrao', 'extrusao': 0.003, 'roughness': 0.1, 'transmission': 0.0, 'ior': 1.45, 'textura': 'madeira.jpg', 'escala_textura': 3.0 },
-    "#3e4095": { 'tipo': 'BASE', 'nome_material': 'Base_Principal', 'extrusao': 0.01, 'roughness': 0.1, 'transmission': 0.0, 'ior': 1.45 },
-    "#f58634": { 'tipo': 'BASE_FINA', 'nome_material': 'Base_Fina', 'extrusao': 0.003, 'roughness': 0.1, 'transmission': 0.0, 'ior': 1.45 },
-    '#ec268f': { 'tipo': 'ADESIVO', 'nome_material': 'Adesivo_Padrao', 'extrusao': 0.0001, 'roughness': 0.1, 'transmission': 0.4, 'ior': 1.45 }
+    # ACRÍLICOS (Qualquer cor com tipo 'ACRILICO' vai herdar estas propriedades)
+    '#ed3237': { 'tipo': 'ACRILICO', 'nome_material': 'acrilico_padrão', 'extrusao': 0.001, 'roughness': 0.00, 'transmission': 1.0, 'ior': 1.49 },
+    '#fff212': { 'tipo': 'ACRILICO', 'nome_material': 'Acrilico_transparente', 'extrusao': 0.001, 'roughness': 0.01, 'transmission': 1.0, 'ior': 2 },
+        
+    
+    # MDFs (Qualquer variação de MDF)
+    '#fefefe': { 'tipo': 'MDF', 'nome_material': 'MDF_3mm', 'extrusao': 0.003, 'roughness': 0.01, 'transmission': 0.2, 'ior': 1.2},
+    '#e6e7e8': { 'tipo': 'MDF', 'nome_material': 'MDF_6mm', 'extrusao': 0.006, 'roughness': 0.01, 'transmission': 0.2, 'ior': 1.2},
+    '#373435': { 'tipo': 'MDF', 'nome_material': 'PLOTTER', 'extrusao': 0.001, 'roughness': 0.01, 'transmission': 0.2, 'ior': 1.2},
+                
+    # BASES
+    "#f58634": { 'tipo': 'BASE', 'nome_material': 'Base_3MM', 'extrusao': 0.003, 'roughness': 0.2, 'transmission': 0.0, 'ior': 1.15 },
+    "#3e4095": { 'tipo': 'BASE', 'nome_material': 'Base_6MM', 'extrusao': 0.01, 'roughness': 0.2, 'transmission': 0.0, 'ior': 1.15},
+    "#f7adaf": { 'tipo': 'BASE', 'nome_material': 'Base_9MM', 'extrusao': 0.015, 'roughness': 0.2, 'transmission': 0.0, 'ior': 1.15 },
+    "#84716b": { 'tipo': 'BASE', 'nome_material': 'Base_9MM', 'extrusao': 0.02, 'roughness': 0.2, 'transmission': 0.0, 'ior': 1.115},
+    
+    # ADESIVOS
+    '#ec268f': { 'tipo': 'ADESIVO', 'nome_material': 'Adesivo_Padrao', 'extrusao': 0.0001, 'roughness': 0.002, 'transmission': 0.5, 'ior': 1.3 }
 }
 
 def hex_para_rgba(hex_color, alpha=1.0):
@@ -149,7 +162,7 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
     
     objetos_importados = list(set(bpy.context.scene.objects) - objetos_antes)
     
-    # Vinculação forçada à coleção principal e limpeza de visibilidade
+    # Vinculação rigorosa à cena principal
     colecao_ativa = bpy.context.scene.collection
     for obj in objetos_importados:
         obj.hide_set(False)
@@ -162,37 +175,84 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         if obj.name not in colecao_ativa.objects:
             colecao_ativa.objects.link(obj)
 
-    # Conversão blindada objeto por objeto para MESH
+    # Conversão direta via dados (Nível de API)
+    malhas_convertidas = []
     for obj in objetos_importados:
-        bpy.ops.object.select_all(action='DESELECT')
-        obj.select_set(True)
-        bpy.context.view_layer.objects.active = obj
-        if obj.type == 'CURVE':
-            try:
-                bpy.ops.object.convert(target='MESH')
-            except Exception as e:
-                print(f"⚠️ Erro ao converter {obj.name}: {e}")
+        if obj.type == 'Curve' or obj.type == 'CURVE':
+            mesh_data = bpy.data.meshes.new_from_object(obj)
+            novo_mesh_obj = bpy.data.objects.new(obj.name.replace(".00", "_mesh"), mesh_data)
+            novo_mesh_obj.matrix_world = obj.matrix_world.copy()
+            
+            colecao_ativa.objects.link(novo_mesh_obj)
+            bpy.data.objects.remove(obj, do_unlink=True)
+            
+            bpy.ops.object.select_all(action='DESELECT')
+            novo_mesh_obj.select_set(True)
+            bpy.context.view_layer.objects.active = novo_mesh_obj
+            
+            malhas_convertidas.append(novo_mesh_obj)
+        elif obj.type == 'MESH':
+            malhas_convertidas.append(obj)
 
+  objetos_importados = malhas_convertidas
     bpy.context.view_layer.update()
     
-    # Filtra estritamente os objetos que viraram Mesh
-    objetos_importados = [obj for obj in objetos_importados if obj.type == 'MESH']
-    
-    # Mapeamento seguro: ordena os objetos importados alfabeticamente/por ID correspondente aos dados extraídos
-    chaves_dados = list(dados_extraidos.keys())
-    
-    idx_imagem_atual = 0 
-    suporte_dos_objetos = {} 
     pasta_script_atual = os.path.dirname(os.path.abspath(__file__))
 
+    # --- ORDENAÇÃO NUMÉRICA SEGURA (Corrige o bug alfabético 1, 10, 2 do Blender) ---
+    def obter_id_numerico(obj):
+        match = re.search(r'trofeu_shape_(\d+)', obj.name)
+        return int(match.group(1)) if match else 9999
+
+    # Ordena os objetos estritamente pela ordem numérica correta do SVG
+    objetos_importados.sort(key=obter_id_numerico)
+
+    # --- MAPEAMENTO E ATRIBUIÇÃO DE REGRAS ---
+    elementos_mapeados = []
+    
     for idx, obj in enumerate(objetos_importados):
-        # Mapeia pelo ID gerado ou sequencialmente para garantir casamento exato com o dicionário
-        nome_base = chaves_dados[idx] if idx < len(chaves_dados) else f"trofeu_shape_{idx+1}"
-        dados = dados_extraidos.get(nome_base, {'contorno': list(REGRAS_MATERIAIS.keys())[0], 'preenchimento': 'Nenhum'})
+        # Mapeia diretamente usando o ID numérico ordenado
+        num_id = obter_id_numerico(obj)
+        nome_base = f"trofeu_shape_{num_id}" if num_id != 9999 else f"trofeu_shape_{idx+1}"
+        
+        dados = dados_extraidos.get(nome_base, {'contorno': '#fefefe', 'preenchimento': 'Nenhum'})
+        cor_contorno = dados.get('contorno', '#fefefe').lower().strip()
+        
+        if cor_contorno not in REGRAS_MATERIAIS:
+            cor_contorno = '#fefefe'
             
-        cor_contorno = dados['contorno']
-        regra = REGRAS_MATERIAIS.get(cor_contorno, list(REGRAS_MATERIAIS.values())[0])
+        regra = REGRAS_MATERIAIS[cor_contorno]
         tipo_material = regra['tipo']
+        
+        # Prioridade estrita de montagem: 0 = Bases (chão), 1 = Corpo (MDF/Acrílico), 2 = Adesivos (topo)
+        if tipo_material in ['BASE', 'BASE_FINA']:
+            prioridade = 0
+        elif tipo_material in ['MDF', 'ACRILICO']:
+            prioridade = 1
+        else:
+            prioridade = 2
+            
+        elementos_mapeados.append({
+            'obj': obj,
+            'nome_base': nome_base,
+            'dados': dados,
+            'regra': regra,
+            'tipo_material': tipo_material,
+            'prioridade': prioridade
+        })
+
+    # Ordena rigorosamente para que a base seja processada antes do corpo e adesivos
+    elementos_mapeados.sort(key=lambda x: x['prioridade'])
+
+    idx_imagem_global = 0
+    suporte_dos_objetos = {}
+    # --- LOOP DE PROCESSAMENTO E MONTAGEM ORDENADA ---
+    for item in elementos_mapeados:
+        obj = item['obj']
+        nome_base = item['nome_base']
+        dados = item['dados']
+        regra = item['regra']
+        tipo_material = item['tipo_material']
 
         min_x, max_x, min_y, max_y = obter_caixa_de_colisao(obj)
         pontos_de_teste = []
@@ -228,24 +288,30 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         obj.location.z = altura_alvo_z
         suporte_dos_objetos[obj.name] = objeto_abaixo.name if objeto_abaixo else None
         
-        bpy.context.view_layer.objects.active = obj
-        bpy.ops.object.mode_set(mode='EDIT')
-        bpy.ops.mesh.select_all(action='SELECT')
-        bpy.ops.mesh.remove_doubles(threshold=0.0001)
-        bpy.ops.mesh.dissolve_limited(angle_limit=math.radians(3))
-        bpy.ops.mesh.normals_make_consistent(inside=False)
-        bpy.ops.object.mode_set(mode='OBJECT')
+        bpy.ops.object.select_all(action='DESELECT')
+        obj.select_set(True)
+        bpy.context.view_layer.update()
 
         if tipo_material == 'ADESIVO': 
             criar_uv_perfeito(obj)
 
+        # Modificador de Extrusão com tratamento de segurança blindado
         mod_solidify = obj.modifiers.new(name="extrusao", type='SOLIDIFY')
         mod_solidify.thickness = regra['extrusao']
         mod_solidify.offset = 1.0 
         mod_solidify.use_even_offset = True     
         mod_solidify.use_quality_normals = True 
         mod_solidify.solidify_mode = 'NON_MANIFOLD' 
-        bpy.ops.object.modifier_apply(modifier=mod_solidify.name)
+        
+        try:
+            bpy.ops.object.modifier_apply(modifier=mod_solidify.name)
+        except RuntimeError:
+            depsgraph_eval = bpy.context.evaluated_depsgraph_get()
+            object_eval = obj.evaluated_get(depsgraph_eval)
+            mesh_eval = bpy.data.meshes.new_from_object(object_eval)
+            obj.modifiers.remove(mod_solidify)
+            obj.data = mesh_eval
+            bpy.context.view_layer.update()
         
         obj.data.materials.clear()
         mat = bpy.data.materials.new(name=f"Mat_{regra['nome_material']}_{nome_base}")
@@ -265,11 +331,13 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
             bsdf = nodes.get("Principled BSDF")
             pino_cor = 'Base Color' 
 
-        cor_svg = hex_para_rgba(dados['preenchimento']) if dados['preenchimento'] != 'Nenhum' else (0.8, 0.6, 0.4, 1.0)
+        preenchimento_val = dados.get('preenchimento', 'Nenhum')
+        cor_svg = hex_para_rgba(preenchimento_val) if preenchimento_val != 'Nenhum' else (0.8, 0.6, 0.4, 1.0)
 
+        # Aplicação rigorosa de imagem EXCLUSIVAMENTE para materiais do tipo ADESIVO
         if tipo_material == 'ADESIVO' and imagens_disponiveis:
-            caminho_imagem = imagens_disponiveis[idx_imagem_atual % len(imagens_disponiveis)]
-            idx_imagem_atual += 1 
+            caminho_imagem = imagens_disponiveis[idx_imagem_global % len(imagens_disponiveis)]
+            idx_imagem_global += 1 
             img_nome_arquivo = os.path.basename(caminho_imagem)
             img_blender = bpy.data.images.get(img_nome_arquivo)
             if not img_blender and os.path.exists(caminho_imagem):
@@ -327,10 +395,10 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
                 input_b.default_value = cor_svg
                 links.new(saida_mix, bsdf.inputs[pino_cor])
             else:
-                if dados['preenchimento'] != 'Nenhum':
+                if preenchimento_val != 'Nenhum':
                     bsdf.inputs[pino_cor].default_value = cor_svg
         else:
-            if dados['preenchimento'] != 'Nenhum':
+            if preenchimento_val != 'Nenhum':
                 bsdf.inputs[pino_cor].default_value = cor_svg
 
         if 'Roughness' in bsdf.inputs: 
@@ -353,30 +421,29 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         visitados = set() 
         while atual and atual not in visitados:
             visitados.add(atual)
-            # Extrai o nome base indexado de forma segura
-            for idx, o in enumerate(objetos_importados):
-                if o.name == atual:
-                    nome_base_obj = chaves_dados[idx] if idx < len(chaves_dados) else ""
-                    if nome_base_obj in dados_extraidos:
-                        cor = dados_extraidos[nome_base_obj]['contorno']
-                        t_mat = REGRAS_MATERIAIS.get(cor, {}).get('tipo')
-                        if t_mat in ['BASE', 'BASE_FINA']: return True 
-                        elif t_mat in ['MDF', 'ACRILICO']: return False 
+            for item in elementos_mapeados:
+                if item['obj'].name == atual:
+                    t_mat = item['tipo_material']
+                    if t_mat in ['BASE', 'BASE_FINA']: return True 
+                    elif t_mat in ['MDF', 'ACRILICO']: return False 
             atual = suporte_dos_objetos.get(atual)
         return False
 
+    # --- FILTRO RIGOROSO DE ROTAÇÃO (As bases NUNCA rotacionam, apenas o corpo do troféu) ---
     pecas_corpo = []
-    for idx, obj in enumerate(objetos_importados):
+    for item in elementos_mapeados:
+        obj = item['obj']
+        t_mat = item['tipo_material']
         try:
             if obj.name in bpy.data.objects:
-                nome_base_obj = chaves_dados[idx] if idx < len(chaves_dados) else ""
                 deve_rotacionar = True 
-                if nome_base_obj in dados_extraidos:
-                    cor = dados_extraidos[nome_base_obj]['contorno']
-                    t_mat = REGRAS_MATERIAIS.get(cor, {}).get('tipo')
-                    if t_mat in ['BASE', 'BASE_FINA']: deve_rotacionar = False 
-                    elif t_mat == 'ADESIVO' and esta_apoiado_na_base(obj.name): deve_rotacionar = False 
-                if deve_rotacionar: pecas_corpo.append(obj)
+                if t_mat in ['BASE', 'BASE_FINA']: 
+                    deve_rotacionar = False  # Base fica intacta no plano horizontal
+                elif t_mat == 'ADESIVO' and esta_apoiado_na_base(obj.name): 
+                    deve_rotacionar = False 
+                
+                if deve_rotacionar: 
+                    pecas_corpo.append(obj)
         except ReferenceError: pass
 
     if pecas_corpo:
@@ -394,7 +461,7 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         matriz_final = mat_ida @ mat_rotacao @ mat_volta
         for obj in pecas_corpo:
             obj.matrix_world = matriz_final @ obj.matrix_world
-
+            
     if objetos_importados:
         bpy.context.view_layer.update()
         render = bpy.context.scene.render
