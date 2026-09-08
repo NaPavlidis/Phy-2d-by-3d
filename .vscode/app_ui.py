@@ -1,8 +1,11 @@
 import os
+import json
 import subprocess
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox
+
+CONFIG_FILE = "config.json"
 
 class SettingsWindow(tk.Toplevel):
     def __init__(self, parent):
@@ -113,7 +116,11 @@ class SettingsWindow(tk.Toplevel):
             self.parent_app.cycles_samples = int(self.cycles_samples_var.get())
         except ValueError:
             self.parent_app.cycles_samples = 128
-        messagebox.showinfo("Sucesso", "Configurações salvas com sucesso!", parent=self)
+            
+        # Salva no arquivo JSON em disco
+        self.parent_app.salvar_configuracoes_disco()
+        
+        messagebox.showinfo("Sucesso", "Configurações salvas permanentemente!", parent=self)
         self.destroy()
 
 
@@ -124,12 +131,16 @@ class VectorConvertProApp(tk.Tk):
         self.geometry("1100x750")
         self.configure(bg="#0B0F17")
 
+        # Padrões iniciais (serão sobrescritos se existir config.json)
         self.blender_path = r"C:\Program Files\Blender Foundation\Blender 4.2\blender.exe"
         self.output_path = os.path.join(os.getcwd(), "imagens")
         self.blend_dir = os.getcwd()
         self.selected_blend = ""
         self.svg_selecionado = ""
         self.cycles_samples = 128
+
+        # Carrega as configurações salvas do disco
+        self.carregar_configuracoes_disco()
         
         self.render_auto_var = tk.BooleanVar(value=True)
         self.usar_textura_var = tk.BooleanVar(value=True)
@@ -154,6 +165,33 @@ class VectorConvertProApp(tk.Tk):
 
         self._build_footer()
         self._show_screen("upload")
+
+    def carregar_configuracoes_disco(self):
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                    dados = json.load(f)
+                    self.blender_path = dados.get("blender_path", self.blender_path)
+                    self.output_path = dados.get("output_path", self.output_path)
+                    self.blend_dir = dados.get("blend_dir", self.blend_dir)
+                    self.selected_blend = dados.get("selected_blend", self.selected_blend)
+                    self.cycles_samples = int(dados.get("cycles_samples", self.cycles_samples))
+            except Exception as e:
+                print(f"Erro ao carregar configurações: {e}")
+
+    def salvar_configuracoes_disco(self):
+        dados = {
+            "blender_path": self.blender_path,
+            "output_path": self.output_path,
+            "blend_dir": self.blend_dir,
+            "selected_blend": self.selected_blend,
+            "cycles_samples": self.cycles_samples
+        }
+        try:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(dados, f, indent=4)
+        except Exception as e:
+            print(f"Erro ao salvar configurações no disco: {e}")
 
     def _build_navbar(self):
         navbar = tk.Frame(self, bg="#0F141C", height=50, padx=20, pady=10)
@@ -242,6 +280,11 @@ class VectorConvertProApp(tk.Tk):
         if file_path:
             self.svg_selecionado = file_path
             self.lbl_arquivo_selecionado.configure(text=os.path.basename(file_path), fg="#34D399")
+            
+            self.lbl_status_processamento.configure(text="🔄 Iniciando importação e montagem de malhas...")
+            for widget in self.frame_historico.winfo_children():
+                widget.destroy()
+                
             self._show_screen("processing")
             self._iniciar_processamento_background()
 
@@ -275,23 +318,36 @@ class VectorConvertProApp(tk.Tk):
         try:
             print(f">>> Executando Blender...")
             processo = subprocess.Popen(comando, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='ignore')
+            
+            estudio_registrado = False
+            
             for linha in processo.stdout:
                 print(linha, end="")
                 linha_limpa = linha.strip()
                 
-                # Atualização dinâmica na aba Processing baseada no status enviado pelo motor
-                if "Carregando estúdio base" in linha_limpa:
-                    self.after(0, lambda: self.lbl_status_processamento.configure(text="📂 Carregando Estúdio Base..."))
+                if "Carregando estúdio base" in linha_limpa and not estudio_registrado:
+                    estudio_registrado = True
+                    self.after(0, lambda: self.adicionar_passo_concluido("📂 Estúdio base carregado com sucesso!", "🔄 Importando curvas e aplicando materiais..."))
                 elif "Renderizando câmera:" in linha_limpa:
-                    self.after(0, lambda l=linha_limpa: self.lbl_status_processamento.configure(text=f"📷 {l}"))
-                elif "Renders salvos em:" in linha_limpa:
-                    self.after(0, lambda: self.lbl_status_processamento.configure(text="✅ Todas as imagens foram renderizadas!"))
+                    cam_nome = linha_limpa.split("Renderizando câmera:")[-1].split("via")[0].strip()
+                    self.after(0, lambda c=cam_nome: self.adicionar_passo_concluido(f"✔ Câmera {c} renderizada com sucesso!", f"🔄 Renderizando próxima etapa..."))
+                elif "Renders salvos em:" in linha_limpa or "Modo interativo ativo" in linha_limpa:
+                    self.after(0, lambda: self.adicionar_passo_concluido("✔ Todas as imagens foram processadas com êxito!", "✅ Finalizando processo..."))
 
             processo.wait()
-            self.after(0, lambda: self._show_screen("download"))
+            self.after(0, lambda: self.tag_concluido())
         except Exception as e:
             print(f"Erro ao executar o Blender via subprocess: {e}")
             messagebox.showerror("Erro Crítico", f"Não foi possível rodar o Blender:\n{e}")
+
+    def adicionar_passo_concluido(self, texto_concluido, novo_status):
+        lbl_hist = tk.Label(self.frame_historico, text=texto_concluido, fg="#34D399", bg="#121824", font=("Helvetica", 9, "bold"), anchor="w")
+        lbl_hist.pack(fill="x", pady=2)
+        self.lbl_status_processamento.configure(text=novo_status)
+
+    def tag_concluido(self):
+        self.lbl_status_processamento.configure(text="✅ Processamento Concluído!")
+        self._show_screen("download")
 
     def _build_processing_screen(self):
         screen = tk.Frame(self.main_container, bg="#0B0F17")
@@ -302,14 +358,13 @@ class VectorConvertProApp(tk.Tk):
         card = tk.Frame(screen, bg="#121824", bd=1, relief="solid")
         card.pack(fill="both", expand=True, padx=20, pady=10)
 
-        tk.Label(card, text="Processando Troféu no Blender...", fg="#FFFFFF", bg="#121824", font=("Helvetica", 14, "bold")).pack(pady=(50, 10))
+        tk.Label(card, text="Processando Troféu no Blender...", fg="#FFFFFF", bg="#121824", font=("Helvetica", 14, "bold")).pack(pady=(30, 10))
         
-        # Rótulo dinâmico de status do processamento
         self.lbl_status_processamento = tk.Label(card, text="🔄 Iniciando importação e montagem de malhas...", fg="#38BDF8", bg="#121824", font=("Helvetica", 11, "bold"))
-        self.lbl_status_processamento.pack(pady=10)
+        self.lbl_status_processamento.pack(pady=5)
 
-        self.lbl_detalhe_processamento = tk.Label(card, text="Acompanhe o andamento das câmeras e renders na aba Processing.", fg="#A0AEC0", bg="#121824", font=("Helvetica", 9))
-        self.lbl_detalhe_processamento.pack(pady=(0, 20))
+        self.frame_historico = tk.Frame(card, bg="#121824")
+        self.frame_historico.pack(fill="x", padx=30, pady=15)
 
     def _build_download_screen(self):
         screen = tk.Frame(self.main_container, bg="#0B0F17")
