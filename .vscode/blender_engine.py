@@ -20,10 +20,10 @@ REGRAS_MATERIAIS = {
     '#373435': { 'tipo': 'MDF', 'nome_material': 'PLOTTER', 'extrusao': 0.001, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.15},
                 
     # BASES
-    "#f58634": { 'tipo': 'BASE', 'nome_material': 'Base_3MM', 'extrusao': 0.003, 'roughness': 0.2, 'transmission': 0.0, 'ior': 1.15 },
-    "#3e4095": { 'tipo': 'BASE', 'nome_material': 'Base_6MM', 'extrusao': 0.01, 'roughness': 0.2, 'transmission': 0.0, 'ior': 1.15},
-    "#f7adaf": { 'tipo': 'BASE', 'nome_material': 'Base_9MM', 'extrusao': 0.015, 'roughness': 0.2, 'transmission': 0.0, 'ior': 1.15 },
-    "#84716b": { 'tipo': 'BASE', 'nome_material': 'Base_9MM', 'extrusao': 0.02, 'roughness': 0.2, 'transmission': 0.0, 'ior': 1.115},
+    "#f58634": { 'tipo': 'BASE', 'nome_material': 'Base_3MM', 'extrusao': 0.003, 'roughness': 0.3, 'transmission': 0.08, 'ior': 1.05},
+    "#3e4095": { 'tipo': 'BASE', 'nome_material': 'Base_6MM', 'extrusao': 0.01, 'roughness': 0.3, 'transmission': 0.08, 'ior': 1.05},
+    "#f7adaf": { 'tipo': 'BASE', 'nome_material': 'Base_9MM', 'extrusao': 0.015, 'roughness': 0.3, 'transmission': 0.08, 'ior': 1.05 },
+    "#84716b": { 'tipo': 'BASE', 'nome_material': 'Base_12MM', 'extrusao': 0.02, 'roughness': 0.3, 'transmission': 0.08, 'ior': 1.05},
     
     # ADESIVOS
     '#ec268f': { 'tipo': 'ADESIVO', 'nome_material': 'Adesivo_Padrao', 'extrusao': 0.0001, 'roughness': 0.002, 'transmission': 0.5, 'ior': 1.3 }
@@ -211,7 +211,7 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         num_id = obter_id_numerico(obj)
         nome_base = f"trofeu_shape_{num_id}" if num_id != 9999 else f"trofeu_shape_{idx+1}"
         
-        dados = dados_extraidos.get(nome_base, {'contorno': '#fefefe', 'preenchimento': 'Nenhum'})
+        dados = dados_extraidos.get(nome_base, {'contorno': '#fefefe', 'preenchimento': 'Nenhum'} )
         cor_contorno = dados.get('contorno', '#fefefe').lower().strip()
         
         if cor_contorno not in REGRAS_MATERIAIS:
@@ -422,6 +422,7 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
             atual = suporte_dos_objetos.get(atual)
         return False
 
+    print("Torféu montado com sucesso!!",flush=True)
     # --- FILTRO RIGOROSO DE ROTAÇÃO (As bases NUNCA rotacionam, apenas o corpo do troféu) ---
     pecas_corpo = []
     for item in elementos_mapeados:
@@ -557,12 +558,12 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
             if cam:
                 scene.camera = cam
                 scene.render.filepath = os.path.join(pasta_dest, f"{cam.name}.png")
-                print(f">>> Renderizando câmera: {cam.name} via Cycles...")
+                print(f">>> Renderizando câmera: {cam.name} via Cycles...", flush=True)
                 bpy.ops.render.render(write_still=True)
                 
-        print(f"Renders salvos em: {pasta_dest}")
+        print(f"Renders salvos em: {pasta_dest}", flush=True)
     else:
-        print(">>> Modo interativo ativo: O Blender permaneceu aberto com o troféu montado.")
+        print(">>> Modo interativo ativo: O Blender permaneceu aberto com o troféu montado.", flush=True)
 
 if __name__ == "__main__":
     if "--" in sys.argv:
