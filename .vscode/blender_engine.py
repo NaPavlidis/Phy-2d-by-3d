@@ -477,7 +477,27 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
 
         alvo_centro = mathutils.Vector(((min_x + max_x) / 2.0, (min_y + max_y) / 2.0, (min_z + max_z) / 2.0))
         tamanho_x = max_x - min_x
+        tamanho_y = max_y - min_y
         tamanho_z = max_z - min_z
+        tamanho_maximo = max(tamanho_x, tamanho_y, tamanho_z)
+
+        # --- DINAMIZAÇÃO DA ILUMINAÇÃO DE ESTÚDIO (.BLEND EXISTENTE) ---
+        # Procura por luzes de preenchimento ou estúdio no .blend para reajustá-las proporcionalmente ao tamanho do troféu
+        for obj_cena in bpy.context.scene.objects:
+            if obj_cena.type == 'LIGHT':
+                # Mantém a luz posicionada em uma órbita proporcional ao tamanho do troféu importado
+                direcao_luz = (obj_cena.location - alvo_centro).normalized()
+                distancia_luz = max(tamanho_maximo * 2.0, 0.5)
+                obj_cena.location = alvo_centro + (direcao_luz * distancia_luz)
+                
+        # Se houver nó de rotação no World (HDRI), ajusta a orientação para refletir uniformemente
+        world = bpy.context.scene.world
+        if world and world.use_nodes:
+            for node in world.node_tree.nodes:
+                if node.type == 'MAPPING':
+                    # Opcional: Garanta que o mapeamento do HDRI acompanhe o centro se necessário
+                    pass
+
 
         def criar_e_apontar_camera(nome, local_vetor):
             cam_obj = bpy.data.objects.get(nome)
