@@ -1,14 +1,17 @@
 import os
+import json
 import subprocess
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
+CONFIG_FILE = "config.json"
+
 class SettingsWindow(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
         self.title("Configurações do Sistema")
-        self.geometry("580x400")
+        self.geometry("580x460")
         self.configure(bg="#121824")
         self.resizable(False, False)
         self.transient(parent)
@@ -19,6 +22,7 @@ class SettingsWindow(tk.Toplevel):
         self.output_path_var = tk.StringVar(value=parent.output_path)
         self.blend_dir_var = tk.StringVar(value=parent.blend_dir)
         self.selected_blend_var = tk.StringVar(value=parent.selected_blend)
+        self.cycles_samples_var = tk.StringVar(value=str(parent.cycles_samples))
 
         self._build_ui()
 
@@ -27,7 +31,7 @@ class SettingsWindow(tk.Toplevel):
 
         # Blender
         f_b = tk.Frame(self, bg="#121824")
-        f_b.pack(fill="x", padx=20, pady=6)
+        f_b.pack(fill="x", padx=20, pady=5)
         tk.Label(f_b, text="Executável do Blender (blender.exe):", fg="#A0AEC0", bg="#121824", font=("Helvetica", 9)).pack(anchor="w", pady=(0, 2))
         sub_b = tk.Frame(f_b, bg="#121824")
         sub_b.pack(fill="x")
@@ -36,7 +40,7 @@ class SettingsWindow(tk.Toplevel):
 
         # Output
         f_o = tk.Frame(self, bg="#121824")
-        f_o.pack(fill="x", padx=20, pady=6)
+        f_o.pack(fill="x", padx=20, pady=5)
         tk.Label(f_o, text="Pasta de Saída dos Renders:", fg="#A0AEC0", bg="#121824", font=("Helvetica", 9)).pack(anchor="w", pady=(0, 2))
         sub_o = tk.Frame(f_o, bg="#121824")
         sub_o.pack(fill="x")
@@ -45,7 +49,7 @@ class SettingsWindow(tk.Toplevel):
 
         # Pasta Blend
         f_d = tk.Frame(self, bg="#121824")
-        f_d.pack(fill="x", padx=20, pady=6)
+        f_d.pack(fill="x", padx=20, pady=5)
         tk.Label(f_d, text="Pasta com os Arquivos .Blend (Estúdios Base):", fg="#A0AEC0", bg="#121824", font=("Helvetica", 9)).pack(anchor="w", pady=(0, 2))
         sub_d = tk.Frame(f_d, bg="#121824")
         sub_d.pack(fill="x")
@@ -54,7 +58,7 @@ class SettingsWindow(tk.Toplevel):
 
         # Dropdown Blend
         f_sel = tk.Frame(self, bg="#121824")
-        f_sel.pack(fill="x", padx=20, pady=6)
+        f_sel.pack(fill="x", padx=20, pady=5)
         tk.Label(f_sel, text="Selecione o Estúdio Base (.blend) Ativo:", fg="#38BDF8", bg="#121824", font=("Helvetica", 9, "bold")).pack(anchor="w", pady=(0, 2))
         
         self.blend_dropdown_menu = tk.OptionMenu(f_sel, self.selected_blend_var, "")
@@ -62,6 +66,12 @@ class SettingsWindow(tk.Toplevel):
         self.blend_dropdown_menu["menu"].config(bg="#121824", fg="#FFFFFF", activebackground="#38BDF8", activeforeground="#000000")
         self.blend_dropdown_menu.pack(fill="x")
         self._atualizar_lista_blends()
+
+        # Cycles Samples
+        f_samp = tk.Frame(self, bg="#121824")
+        f_samp.pack(fill="x", padx=20, pady=5)
+        tk.Label(f_samp, text="Qtd de Samples do Cycles (Ex: 128, 256):", fg="#A0AEC0", bg="#121824", font=("Helvetica", 9)).pack(anchor="w", pady=(0, 2))
+        tk.Entry(f_samp, textvariable=self.cycles_samples_var, bg="#080C14", fg="#FFFFFF", bd=1, relief="solid", insertbackground="#FFFFFF", width=20).pack(anchor="w", ipady=4)
 
         tk.Button(self, text="Salvar Configurações", bg="#38BDF8", fg="#FFFFFF", bd=0, font=("Helvetica", 10, "bold"), pady=8, command=self._save_settings).pack(fill="x", padx=20, pady=(15, 0))
 
@@ -102,7 +112,15 @@ class SettingsWindow(tk.Toplevel):
         self.parent_app.output_path = self.output_path_var.get()
         self.parent_app.blend_dir = self.blend_dir_var.get()
         self.parent_app.selected_blend = self.selected_blend_var.get()
-        messagebox.showinfo("Sucesso", "Configurações salvas com sucesso!", parent=self)
+        try:
+            self.parent_app.cycles_samples = int(self.cycles_samples_var.get())
+        except ValueError:
+            self.parent_app.cycles_samples = 128
+            
+        # Salva no arquivo JSON em disco
+        self.parent_app.salvar_configuracoes_disco()
+        
+        messagebox.showinfo("Sucesso", "Configurações salvas permanentemente!", parent=self)
         self.destroy()
 
 
@@ -113,15 +131,19 @@ class VectorConvertProApp(tk.Tk):
         self.geometry("1100x750")
         self.configure(bg="#0B0F17")
 
-        self.blender_path = r"C:/Program Files/Blender Foundation/Blender 5.2/blender.exe"
+        # Padrões iniciais (serão sobrescritos se existir config.json)
+        self.blender_path = r"C:\Program Files\Blender Foundation\Blender 4.2\blender.exe"
         self.output_path = os.path.join(os.getcwd(), "imagens")
         self.blend_dir = os.getcwd()
         self.selected_blend = ""
         self.svg_selecionado = ""
+        self.cycles_samples = 128
+
+        # Carrega as configurações salvas do disco
+        self.carregar_configuracoes_disco()
         
-        # Variáveis dos Checkboxes
         self.render_auto_var = tk.BooleanVar(value=True)
-        self.usar_textura_var = tk.BooleanVar(value=True) # Novo: Ativar/Desativar Texturização
+        self.usar_textura_var = tk.BooleanVar(value=True)
 
         self.sidebar_buttons = {}
         self.screens = {}
@@ -143,6 +165,33 @@ class VectorConvertProApp(tk.Tk):
 
         self._build_footer()
         self._show_screen("upload")
+
+    def carregar_configuracoes_disco(self):
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                    dados = json.load(f)
+                    self.blender_path = dados.get("blender_path", self.blender_path)
+                    self.output_path = dados.get("output_path", self.output_path)
+                    self.blend_dir = dados.get("blend_dir", self.blend_dir)
+                    self.selected_blend = dados.get("selected_blend", self.selected_blend)
+                    self.cycles_samples = int(dados.get("cycles_samples", self.cycles_samples))
+            except Exception as e:
+                print(f"Erro ao carregar configurações: {e}")
+
+    def salvar_configuracoes_disco(self):
+        dados = {
+            "blender_path": self.blender_path,
+            "output_path": self.output_path,
+            "blend_dir": self.blend_dir,
+            "selected_blend": self.selected_blend,
+            "cycles_samples": self.cycles_samples
+        }
+        try:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(dados, f, indent=4)
+        except Exception as e:
+            print(f"Erro ao salvar configurações no disco: {e}")
 
     def _build_navbar(self):
         navbar = tk.Frame(self, bg="#0F141C", height=50, padx=20, pady=10)
@@ -214,14 +263,12 @@ class VectorConvertProApp(tk.Tk):
         btn_select = tk.Button(card, text="Selecionar Arquivo SVG", fg="#FFFFFF", bg="#38BDF8", bd=0, padx=20, pady=10, font=("Helvetica", 10, "bold"), command=self._selecionar_svg)
         btn_select.pack(pady=15)
 
-        # --- CHECKBOX 1: RENDERIZAÇÃO AUTOMÁTICA ---
         chk_render = tk.Checkbutton(
             card, text="Renderizar automaticamente após importar e montar", variable=self.render_auto_var, 
             fg="#A0AEC0", bg="#121824", selectcolor="#080C14", activebackground="#121824", activeforeground="#FFFFFF", font=("Helvetica", 9)
         )
         chk_render.pack(pady=5)
 
-        # --- CHECKBOX 2: APLICAR TEXTURIZAÇÃO ---
         chk_textura = tk.Checkbutton(
             card, text="Aplicar texturas (Ex: madeira.jpg no MDF)", variable=self.usar_textura_var, 
             fg="#A0AEC0", bg="#121824", selectcolor="#080C14", activebackground="#121824", activeforeground="#FFFFFF", font=("Helvetica", 9)
@@ -233,6 +280,11 @@ class VectorConvertProApp(tk.Tk):
         if file_path:
             self.svg_selecionado = file_path
             self.lbl_arquivo_selecionado.configure(text=os.path.basename(file_path), fg="#34D399")
+            
+            self.lbl_status_processamento.configure(text="🔄 Iniciando importação e montagem de malhas...")
+            for widget in self.frame_historico.winfo_children():
+                widget.destroy()
+                
             self._show_screen("processing")
             self._iniciar_processamento_background()
 
@@ -252,7 +304,6 @@ class VectorConvertProApp(tk.Tk):
         if self.render_auto_var.get():
             comando.append("--background")
 
-        # Repassa todos os parâmetros atualizados para o motor do Blender
         comando.extend([
             "--python", caminho_engine,
             "--",
@@ -260,20 +311,43 @@ class VectorConvertProApp(tk.Tk):
             self.output_path,
             caminho_blend_escolhido,
             str(self.render_auto_var.get()),
-            str(self.usar_textura_var.get())
+            str(self.usar_textura_var.get()),
+            str(self.cycles_samples)
         ])
 
         try:
-            print(f">>> Executando Blender (Render: {self.render_auto_var.get()}, Textura: {self.usar_textura_var.get()})")
+            print(f">>> Executando Blender...")
             processo = subprocess.Popen(comando, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='ignore')
+            
+            estudio_registrado = False
+            
             for linha in processo.stdout:
                 print(linha, end="")
-            processo.wait()
+                linha_limpa = linha.strip()
+                
+                if "Carregando estúdio base" in linha_limpa and not estudio_registrado:
+                    estudio_registrado = True
+                    self.after(0, lambda: self.adicionar_passo_concluido("📂 Estúdio base carregado com sucesso!", "🔄 Importando curvas e aplicando materiais..."))
+                elif "Renderizando câmera:" in linha_limpa:
+                    cam_nome = linha_limpa.split("Renderizando câmera:")[-1].split("via")[0].strip()
+                    self.after(0, lambda c=cam_nome: self.adicionar_passo_concluido(f"✔ Câmera {c} renderizada com sucesso!", f"🔄 Renderizando próxima etapa..."))
+                elif "Renders salvos em:" in linha_limpa or "Modo interativo ativo" in linha_limpa:
+                    self.after(0, lambda: self.adicionar_passo_concluido("✔ Todas as imagens foram processadas com êxito!", "✅ Finalizando processo..."))
 
-            self.after(0, lambda: self._show_screen("download"))
+            processo.wait()
+            self.after(0, lambda: self.tag_concluido())
         except Exception as e:
             print(f"Erro ao executar o Blender via subprocess: {e}")
             messagebox.showerror("Erro Crítico", f"Não foi possível rodar o Blender:\n{e}")
+
+    def adicionar_passo_concluido(self, texto_concluido, novo_status):
+        lbl_hist = tk.Label(self.frame_historico, text=texto_concluido, fg="#34D399", bg="#121824", font=("Helvetica", 9, "bold"), anchor="w")
+        lbl_hist.pack(fill="x", pady=2)
+        self.lbl_status_processamento.configure(text=novo_status)
+
+    def tag_concluido(self):
+        self.lbl_status_processamento.configure(text="✅ Processamento Concluído!")
+        self._show_screen("download")
 
     def _build_processing_screen(self):
         screen = tk.Frame(self.main_container, bg="#0B0F17")
@@ -284,8 +358,13 @@ class VectorConvertProApp(tk.Tk):
         card = tk.Frame(screen, bg="#121824", bd=1, relief="solid")
         card.pack(fill="both", expand=True, padx=20, pady=10)
 
-        tk.Label(card, text="Processando Troféu no Blender...", fg="#FFFFFF", bg="#121824", font=("Helvetica", 14, "bold")).pack(pady=(60, 5))
-        tk.Label(card, text="🔄 Aplicando estúdio base, importando curvas e montando malhas...", fg="#A0AEC0", bg="#121824", font=("Helvetica", 10)).pack(pady=(0, 20))
+        tk.Label(card, text="Processando Troféu no Blender...", fg="#FFFFFF", bg="#121824", font=("Helvetica", 14, "bold")).pack(pady=(30, 10))
+        
+        self.lbl_status_processamento = tk.Label(card, text="🔄 Iniciando importação e montagem de malhas...", fg="#38BDF8", bg="#121824", font=("Helvetica", 11, "bold"))
+        self.lbl_status_processamento.pack(pady=5)
+
+        self.frame_historico = tk.Frame(card, bg="#121824")
+        self.frame_historico.pack(fill="x", padx=30, pady=15)
 
     def _build_download_screen(self):
         screen = tk.Frame(self.main_container, bg="#0B0F17")

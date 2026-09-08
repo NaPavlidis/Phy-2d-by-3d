@@ -9,18 +9,31 @@ import shutil
 
 # --- REGRAS DE MATERIAIS AGRUPADOS POR TIPO ---
 REGRAS_MATERIAIS = {    
-    '#ed3237': { 'tipo': 'ACRILICO', 'nome_material': 'Acrilico_Vermelho', 'extrusao': 0.001, 'roughness': 0.05, 'transmission': 1.0, 'ior': 1.49 },
-    '#fefefe': { 'tipo': 'MDF', 'nome_material': 'MDF_Padrao', 'extrusao': 0.003, 'roughness': 0.1, 'transmission': 0.0, 'ior': 1.45, 'textura': 'madeira.jpg', 'escala_textura': 3.0 },
-    "#3e4095": { 'tipo': 'BASE', 'nome_material': 'Base_Principal', 'extrusao': 0.01, 'roughness': 0.1, 'transmission': 0.0, 'ior': 1.45 },
-    "#f58634": { 'tipo': 'BASE_FINA', 'nome_material': 'Base_Fina', 'extrusao': 0.003, 'roughness': 0.1, 'transmission': 0.0, 'ior': 1.45 },
-    '#ec268f': { 'tipo': 'ADESIVO', 'nome_material': 'Adesivo_Padrao', 'extrusao': 0.0001, 'roughness': 0.1, 'transmission': 0.4, 'ior': 1.45 }
+    # ACRÍLICOS (Qualquer cor com tipo 'ACRILICO' vai herdar estas propriedades)
+    '#ed3237': { 'tipo': 'ACRILICO', 'nome_material': 'acrilico_padrão', 'extrusao': 0.001, 'roughness': 0.00, 'transmission': 1.0, 'ior': 1.49 },
+    '#fff212': { 'tipo': 'ACRILICO', 'nome_material': 'Acrilico_transparente', 'extrusao': 0.001, 'roughness': 0.01, 'transmission': 1.0, 'ior': 2 },
+        
+    
+    # MDFs (Qualquer variação de MDF)
+    '#fefefe': { 'tipo': 'MDF', 'nome_material': 'MDF_3mm', 'extrusao': 0.003, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.15},
+    '#e6e7e8': { 'tipo': 'MDF', 'nome_material': 'MDF_6mm', 'extrusao': 0.006, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.15},
+    '#373435': { 'tipo': 'MDF', 'nome_material': 'PLOTTER', 'extrusao': 0.001, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.15},
+                
+    # BASES
+    "#f58634": { 'tipo': 'BASE', 'nome_material': 'Base_3MM', 'extrusao': 0.003, 'roughness': 0.3, 'transmission': 0.08, 'ior': 1.05},
+    "#3e4095": { 'tipo': 'BASE', 'nome_material': 'Base_6MM', 'extrusao': 0.01, 'roughness': 0.3, 'transmission': 0.08, 'ior': 1.05},
+    "#f7adaf": { 'tipo': 'BASE', 'nome_material': 'Base_9MM', 'extrusao': 0.015, 'roughness': 0.3, 'transmission': 0.08, 'ior': 1.05 },
+    "#84716b": { 'tipo': 'BASE', 'nome_material': 'Base_12MM', 'extrusao': 0.02, 'roughness': 0.3, 'transmission': 0.08, 'ior': 1.05},
+    
+    # ADESIVOS
+    '#ec268f': { 'tipo': 'ADESIVO', 'nome_material': 'Adesivo_Padrao', 'extrusao': 0.0001, 'roughness': 0.002, 'transmission': 0.2, 'ior': 1.2 }
 }
 
 def hex_para_rgba(hex_color, alpha=1.0):
     if not hex_color or not hex_color.startswith('#'): return (1.0, 1.0, 1.0, alpha)
     hex_color = hex_color.lstrip('#').lower()
     r, g, b = int(hex_color[0:2], 16)/255.0, int(hex_color[2:4], 16)/255.0, int(hex_color[4:6], 16)/255.0
-    fator_cmyk = 0.75 
+    fator_cmyk = 0.50 
     r, g, b = r * fator_cmyk, g * fator_cmyk, b * fator_cmyk
     def srgb_para_linear(c): return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
     return (srgb_para_linear(r), srgb_para_linear(g), srgb_para_linear(b), alpha)
@@ -48,7 +61,7 @@ def criar_uv_perfeito(obj):
         v_uv = (v.co.y - min_y) / altura
         uv_layer[loop.index].uv = (u, v_uv)
 
-def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="", renderizar=True, usar_textura=True):
+def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="", renderizar=True, usar_textura=True, cycles_samples=128):
     # 1. Carrega o estúdio base se fornecido
     if caminho_blend and os.path.exists(caminho_blend):
         print(f">>> Carregando estúdio base: {caminho_blend}")
@@ -149,7 +162,7 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
     
     objetos_importados = list(set(bpy.context.scene.objects) - objetos_antes)
     
-    # Vinculação forçada à coleção principal e limpeza de visibilidade
+    # Vinculação rigorosa à cena principal
     colecao_ativa = bpy.context.scene.collection
     for obj in objetos_importados:
         obj.hide_set(False)
@@ -162,37 +175,77 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         if obj.name not in colecao_ativa.objects:
             colecao_ativa.objects.link(obj)
 
-    # Conversão blindada objeto por objeto para MESH
+    # Conversão direta via dados (Nível de API)
+    malhas_convertidas = []
     for obj in objetos_importados:
-        bpy.ops.object.select_all(action='DESELECT')
-        obj.select_set(True)
-        bpy.context.view_layer.objects.active = obj
-        if obj.type == 'CURVE':
-            try:
-                bpy.ops.object.convert(target='MESH')
-            except Exception as e:
-                print(f"⚠️ Erro ao converter {obj.name}: {e}")
+        if obj.type == 'Curve' or obj.type == 'CURVE':
+            mesh_data = bpy.data.meshes.new_from_object(obj)
+            novo_mesh_obj = bpy.data.objects.new(obj.name.replace(".00", "_mesh"), mesh_data)
+            novo_mesh_obj.matrix_world = obj.matrix_world.copy()
+            
+            colecao_ativa.objects.link(novo_mesh_obj)
+            bpy.data.objects.remove(obj, do_unlink=True)
+            
+            bpy.ops.object.select_all(action='DESELECT')
+            novo_mesh_obj.select_set(True)
+            bpy.context.view_layer.objects.active = novo_mesh_obj
+            
+            malhas_convertidas.append(novo_mesh_obj)
+        elif obj.type == 'MESH':
+            malhas_convertidas.append(obj)
 
+    objetos_importados = malhas_convertidas
     bpy.context.view_layer.update()
     
-    # Filtra estritamente os objetos que viraram Mesh
-    objetos_importados = [obj for obj in objetos_importados if obj.type == 'MESH']
-    
-    # Mapeamento seguro: ordena os objetos importados alfabeticamente/por ID correspondente aos dados extraídos
-    chaves_dados = list(dados_extraidos.keys())
-    
-    idx_imagem_atual = 0 
-    suporte_dos_objetos = {} 
     pasta_script_atual = os.path.dirname(os.path.abspath(__file__))
 
+    # --- FUNÇÃO AUXILIAR PARA LER O ID NUMÉRICO DO SVG ---
+    def obter_id_numerico(obj):
+        match = re.search(r'trofeu_shape_(\d+)', obj.name)
+        return int(match.group(1)) if match else 9999
+
+    # --- MAPEAMENTO RIGOROSO NA ORDEM EXATA DO SVG (Sem blocos fixos) ---
+    elementos_mapeados = []
+    
     for idx, obj in enumerate(objetos_importados):
-        # Mapeia pelo ID gerado ou sequencialmente para garantir casamento exato com o dicionário
-        nome_base = chaves_dados[idx] if idx < len(chaves_dados) else f"trofeu_shape_{idx+1}"
-        dados = dados_extraidos.get(nome_base, {'contorno': list(REGRAS_MATERIAIS.keys())[0], 'preenchimento': 'Nenhum'})
+        num_id = obter_id_numerico(obj)
+        nome_base = f"trofeu_shape_{num_id}" if num_id != 9999 else f"trofeu_shape_{idx+1}"
+        
+        dados = dados_extraidos.get(nome_base, {'contorno': '#fefefe', 'preenchimento': 'Nenhum'} )
+        cor_contorno = dados.get('contorno', '#fefefe').lower().strip()
+        
+        if cor_contorno not in REGRAS_MATERIAIS:
+            cor_contorno = '#fefefe'
             
-        cor_contorno = dados['contorno']
-        regra = REGRAS_MATERIAIS.get(cor_contorno, list(REGRAS_MATERIAIS.values())[0])
+        regra = REGRAS_MATERIAIS[cor_contorno]
         tipo_material = regra['tipo']
+        
+        eh_base = tipo_material in ['BASE', 'BASE_FINA']
+            
+        elementos_mapeados.append({
+            'obj': obj,
+            'nome_base': nome_base,
+            'dados': dados,
+            'regra': regra,
+            'tipo_material': tipo_material,
+            'indice_svg': num_id if num_id != 9999 else idx,
+            'eh_base': eh_base
+        })
+
+    # --- ORDENAÇÃO POR CAMADAS DO SVG ---
+    # As bases vão primeiro para servirem de fundação, e o restante das peças segue a ordem de camadas do SVG.
+    elementos_mapeados.sort(key=lambda x: (0 if x['eh_base'] else 1, x['indice_svg']))
+
+    idx_imagem_global = 0
+    suporte_dos_objetos = {}
+
+    # --- LOOP DE PROCESSAMENTO E MONTAGEM ORDENADA ---
+    for item in elementos_mapeados:
+        obj = item['obj']
+        nome_base = item['nome_base']
+        dados = item['dados']
+        regra = item['regra']
+        tipo_material = item['tipo_material']
 
         min_x, max_x, min_y, max_y = obter_caixa_de_colisao(obj)
         pontos_de_teste = []
@@ -228,24 +281,30 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         obj.location.z = altura_alvo_z
         suporte_dos_objetos[obj.name] = objeto_abaixo.name if objeto_abaixo else None
         
-        bpy.context.view_layer.objects.active = obj
-        bpy.ops.object.mode_set(mode='EDIT')
-        bpy.ops.mesh.select_all(action='SELECT')
-        bpy.ops.mesh.remove_doubles(threshold=0.0001)
-        bpy.ops.mesh.dissolve_limited(angle_limit=math.radians(3))
-        bpy.ops.mesh.normals_make_consistent(inside=False)
-        bpy.ops.object.mode_set(mode='OBJECT')
+        bpy.ops.object.select_all(action='DESELECT')
+        obj.select_set(True)
+        bpy.context.view_layer.update()
 
         if tipo_material == 'ADESIVO': 
             criar_uv_perfeito(obj)
 
+        # Modificador de Extrusão com tratamento de segurança blindado
         mod_solidify = obj.modifiers.new(name="extrusao", type='SOLIDIFY')
         mod_solidify.thickness = regra['extrusao']
         mod_solidify.offset = 1.0 
         mod_solidify.use_even_offset = True     
         mod_solidify.use_quality_normals = True 
         mod_solidify.solidify_mode = 'NON_MANIFOLD' 
-        bpy.ops.object.modifier_apply(modifier=mod_solidify.name)
+        
+        try:
+            bpy.ops.object.modifier_apply(modifier=mod_solidify.name)
+        except RuntimeError:
+            depsgraph_eval = bpy.context.evaluated_depsgraph_get()
+            object_eval = obj.evaluated_get(depsgraph_eval)
+            mesh_eval = bpy.data.meshes.new_from_object(object_eval)
+            obj.modifiers.remove(mod_solidify)
+            obj.data = mesh_eval
+            bpy.context.view_layer.update()
         
         obj.data.materials.clear()
         mat = bpy.data.materials.new(name=f"Mat_{regra['nome_material']}_{nome_base}")
@@ -265,72 +324,53 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
             bsdf = nodes.get("Principled BSDF")
             pino_cor = 'Base Color' 
 
-        cor_svg = hex_para_rgba(dados['preenchimento']) if dados['preenchimento'] != 'Nenhum' else (0.8, 0.6, 0.4, 1.0)
+        preenchimento_val = dados.get('preenchimento', 'Nenhum')
+        cor_svg = hex_para_rgba(preenchimento_val) if preenchimento_val != 'Nenhum' else (0.8, 0.6, 0.4, 1.0)
 
+        # Aplicação rigorosa de imagem EXCLUSIVAMENTE para materiais do tipo ADESIVO
         if tipo_material == 'ADESIVO' and imagens_disponiveis:
-            caminho_imagem = imagens_disponiveis[idx_imagem_atual % len(imagens_disponiveis)]
-            idx_imagem_atual += 1 
+            caminho_imagem = imagens_disponiveis[idx_imagem_global % len(imagens_disponiveis)]
+            idx_imagem_global += 1 
             img_nome_arquivo = os.path.basename(caminho_imagem)
             img_blender = bpy.data.images.get(img_nome_arquivo)
             if not img_blender and os.path.exists(caminho_imagem):
                 img_blender = bpy.data.images.load(filepath=caminho_imagem)
+            
             tex_node = nodes.new('ShaderNodeTexImage')
             if img_blender:
                 tex_node.image = img_blender
-            tex_node.location = (-300, 300)
-            links.new(tex_node.outputs['Color'], bsdf.inputs[pino_cor])
-            
-        elif 'textura' in regra and regra['textura'] and usar_textura:
-            caminho_textura = os.path.join(pasta_script_atual, "textura", regra['textura'])
-            
-            if os.path.exists(caminho_textura):
-                tex_node = nodes.new('ShaderNodeTexImage')
-                tex_node.location = (-600, 300)
-                tex_node.projection = 'BOX' 
-                tex_node.projection_blend = 0.15 
-                
-                tex_coord = nodes.new('ShaderNodeTexCoord')
-                tex_coord.location = (-1000, 300)
-                mapping_node = nodes.new('ShaderNodeMapping')
-                mapping_node.location = (-800, 300)
-                escala = regra.get('escala_textura', 1.0)
-                mapping_node.inputs['Scale'].default_value = (escala, escala, escala)
+            tex_node.location = (-600, 300)
 
-                links.new(tex_coord.outputs['Object'], mapping_node.inputs['Vector'])
-                links.new(mapping_node.outputs['Vector'], tex_node.inputs['Vector'])
-                
-                img_nome_mdf = os.path.basename(caminho_textura)
-                img_blender = bpy.data.images.get(img_nome_mdf)
-                if not img_blender:
-                    img_blender = bpy.data.images.load(filepath=caminho_textura)
-                tex_node.image = img_blender
-
-                if bpy.app.version >= (3, 4, 0):
-                    mix_node = nodes.new('ShaderNodeMix')
-                    mix_node.data_type = 'RGBA'
-                    mix_node.blend_type = 'MULTIPLY'
-                    input_fac = mix_node.inputs.get('Factor', mix_node.inputs[0])
-                    input_a = mix_node.inputs.get('A', mix_node.inputs[6])
-                    input_b = mix_node.inputs.get('B', mix_node.inputs[7])
-                    saida_mix = mix_node.outputs.get('Result', mix_node.outputs[2])
-                else:
-                    mix_node = nodes.new('ShaderNodeMixRGB')
-                    mix_node.blend_type = 'MULTIPLY'
-                    input_fac = mix_node.inputs['Fac']
-                    input_a = mix_node.inputs['Color1']
-                    input_b = mix_node.inputs['Color2']
-                    saida_mix = mix_node.outputs['Color']
-
-                mix_node.location = (-300, 300)
-                input_fac.default_value = 1.0
-                links.new(tex_node.outputs['Color'], input_a)
-                input_b.default_value = cor_svg
-                links.new(saida_mix, bsdf.inputs[pino_cor])
+            # --- COMPENSAÇÃO DE ESCURO CMYK PARA O ADESIVO ---
+            # Adiciona um nó de Mix para escurecer levemente a imagem do adesivo com base no fator CMYK (0.75)
+            if bpy.app.version >= (3, 4, 0):
+                mix_adesivo = nodes.new('ShaderNodeMix')
+                mix_adesivo.data_type = 'RGBA'
+                mix_adesivo.blend_type = 'MULTIPLY'
+                input_fac_ad = mix_adesivo.inputs.get('Factor', mix_adesivo.inputs[0])
+                input_a_ad = mix_adesivo.inputs.get('A', mix_adesivo.inputs[6])
+                input_b_ad = mix_adesivo.inputs.get('B', mix_adesivo.inputs[7])
+                saida_mix_ad = mix_adesivo.outputs.get('Result', mix_adesivo.outputs[2])
             else:
-                if dados['preenchimento'] != 'Nenhum':
-                    bsdf.inputs[pino_cor].default_value = cor_svg
+                mix_adesivo = nodes.new('ShaderNodeMixRGB')
+                mix_adesivo.blend_type = 'MULTIPLY'
+                input_fac_ad = mix_adesivo.inputs['Fac']
+                input_a_ad = mix_adesivo.inputs['Color1']
+                input_b_ad = mix_adesivo.inputs['Color2']
+                saida_mix_ad = mix_adesivo.outputs['Color']
+
+            mix_adesivo.location = (-300, 300)
+            input_fac_ad.default_value = 0.8  # Intensidade do escurecimento CMYK (Ajustável de 0.0 a 1.0)
+            
+            links.new(tex_node.outputs['Color'], input_a_ad)
+            
+            # Aplica o fator de escurecimento CMYK equivalente ao usado no troféu
+            fator_escuro_cmyk = (0.30, 0.30, 0.30, 0.5)
+            input_b_ad.default_value = fator_escuro_cmyk
+            
+            links.new(saida_mix_ad, bsdf.inputs[pino_cor])
         else:
-            if dados['preenchimento'] != 'Nenhum':
+            if preenchimento_val != 'Nenhum':
                 bsdf.inputs[pino_cor].default_value = cor_svg
 
         if 'Roughness' in bsdf.inputs: 
@@ -353,30 +393,30 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         visitados = set() 
         while atual and atual not in visitados:
             visitados.add(atual)
-            # Extrai o nome base indexado de forma segura
-            for idx, o in enumerate(objetos_importados):
-                if o.name == atual:
-                    nome_base_obj = chaves_dados[idx] if idx < len(chaves_dados) else ""
-                    if nome_base_obj in dados_extraidos:
-                        cor = dados_extraidos[nome_base_obj]['contorno']
-                        t_mat = REGRAS_MATERIAIS.get(cor, {}).get('tipo')
-                        if t_mat in ['BASE', 'BASE_FINA']: return True 
-                        elif t_mat in ['MDF', 'ACRILICO']: return False 
+            for item in elementos_mapeados:
+                if item['obj'].name == atual:
+                    t_mat = item['tipo_material']
+                    if t_mat in ['BASE', 'BASE_FINA']: return True 
+                    elif t_mat in ['MDF', 'ACRILICO']: return False 
             atual = suporte_dos_objetos.get(atual)
         return False
 
+    print("Torféu montado com sucesso!!",flush=True)
+    # --- FILTRO RIGOROSO DE ROTAÇÃO (As bases NUNCA rotacionam, apenas o corpo do troféu) ---
     pecas_corpo = []
-    for idx, obj in enumerate(objetos_importados):
+    for item in elementos_mapeados:
+        obj = item['obj']
+        t_mat = item['tipo_material']
         try:
             if obj.name in bpy.data.objects:
-                nome_base_obj = chaves_dados[idx] if idx < len(chaves_dados) else ""
                 deve_rotacionar = True 
-                if nome_base_obj in dados_extraidos:
-                    cor = dados_extraidos[nome_base_obj]['contorno']
-                    t_mat = REGRAS_MATERIAIS.get(cor, {}).get('tipo')
-                    if t_mat in ['BASE', 'BASE_FINA']: deve_rotacionar = False 
-                    elif t_mat == 'ADESIVO' and esta_apoiado_na_base(obj.name): deve_rotacionar = False 
-                if deve_rotacionar: pecas_corpo.append(obj)
+                if t_mat in ['BASE', 'BASE_FINA']: 
+                    deve_rotacionar = False  # Base fica intacta no plano horizontal
+                elif t_mat == 'ADESIVO' and esta_apoiado_na_base(obj.name): 
+                    deve_rotacionar = False 
+                
+                if deve_rotacionar: 
+                    pecas_corpo.append(obj)
         except ReferenceError: pass
 
     if pecas_corpo:
@@ -394,7 +434,7 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         matriz_final = mat_ida @ mat_rotacao @ mat_volta
         for obj in pecas_corpo:
             obj.matrix_world = matriz_final @ obj.matrix_world
-
+            
     if objetos_importados:
         bpy.context.view_layer.update()
         render = bpy.context.scene.render
@@ -417,7 +457,27 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
 
         alvo_centro = mathutils.Vector(((min_x + max_x) / 2.0, (min_y + max_y) / 2.0, (min_z + max_z) / 2.0))
         tamanho_x = max_x - min_x
+        tamanho_y = max_y - min_y
         tamanho_z = max_z - min_z
+        tamanho_maximo = max(tamanho_x, tamanho_y, tamanho_z)
+
+        # --- DINAMIZAÇÃO DA ILUMINAÇÃO DE ESTÚDIO (.BLEND EXISTENTE) ---
+        # Procura por luzes de preenchimento ou estúdio no .blend para reajustá-las proporcionalmente ao tamanho do troféu
+        for obj_cena in bpy.context.scene.objects:
+            if obj_cena.type == 'LIGHT':
+                # Mantém a luz posicionada em uma órbita proporcional ao tamanho do troféu importado
+                direcao_luz = (obj_cena.location - alvo_centro).normalized()
+                distancia_luz = max(tamanho_maximo * 2.0, 0.5)
+                obj_cena.location = alvo_centro + (direcao_luz * distancia_luz)
+                
+        # Se houver nó de rotação no World (HDRI), ajusta a orientação para refletir uniformemente
+        world = bpy.context.scene.world
+        if world and world.use_nodes:
+            for node in world.node_tree.nodes:
+                if node.type == 'MAPPING':
+                    # Opcional: Garanta que o mapeamento do HDRI acompanhe o centro se necessário
+                    pass
+
 
         def criar_e_apontar_camera(nome, local_vetor):
             cam_obj = bpy.data.objects.get(nome)
@@ -440,14 +500,46 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         tamanho_real = max(tamanho_z, tamanho_x / aspect_ratio) if aspect_ratio > 1 else max(tamanho_x, tamanho_z * aspect_ratio)
         distancia_base = (tamanho_real / 2.0) / math.tan(fov / 2.0) * 1.5
 
-        criar_e_apontar_camera("Camera_Principal", mathutils.Vector((alvo_centro.x, min_y - distancia_base, alvo_centro.z)))
+        # --- AJUSTE DE ALTURA E ÂNGULO DA CÂMERA PRINCIPAL ---
+        # Elevamos ligeiramente o ponto focal Z (focando um pouco acima do centro) e subimos a câmera 
+        # para que o topo e a região do adesivo fiquem perfeitamente enquadrados.
+        ponto_focal_alvo = alvo_centro.copy()
+        ponto_focal_alvo.z += tamanho_z * 0.9  # Desloca o foco um pouco para cima
         
+        altura_camera = alvo_centro.z + (tamanho_z * 0.2)  # Eleva a posição da câmera em relação ao centro
+        pos_cam_principal = mathutils.Vector((alvo_centro.x, min_y - distancia_base, altura_camera))
+        
+        cam_principal = bpy.data.objects.get("Camera_Principal")
+        if not cam_principal:
+            cam_data = bpy.data.cameras.new(name="Camera_Principal")
+            cam_principal = bpy.data.objects.new("Camera_Principal", cam_data)
+            bpy.context.scene.collection.objects.link(cam_principal)
+        
+        cam_principal.data.type = 'PERSP'
+        cam_principal.location = pos_cam_principal
+        direcao_principal = ponto_focal_alvo - cam_principal.location
+        cam_principal.rotation_euler = direcao_principal.to_track_quat('-Z', 'Y').to_euler()
+
+        # Ajuste proporcional para as câmeras laterais (Esquerda e Direita)
         angulo_diag = math.radians(35) 
         dist_lateral = distancia_base * 1.1
-        criar_e_apontar_camera("Camera_Esquerda", mathutils.Vector((alvo_centro.x - (dist_lateral * math.sin(angulo_diag)), alvo_centro.y - (dist_lateral * math.cos(angulo_diag)), alvo_centro.z + (tamanho_z * 0.15))))
-        criar_e_apontar_camera("Camera_Direita", mathutils.Vector((alvo_centro.x + (dist_lateral * math.sin(angulo_diag)), alvo_centro.y - (dist_lateral * math.cos(angulo_diag)), alvo_centro.z + (tamanho_z * 0.15))))
         
-        bpy.context.scene.camera = bpy.data.objects.get("Camera_Principal")
+        def criar_e_apontar_camera(nome, local_vetor, focal_vetor):
+            cam_obj = bpy.data.objects.get(nome)
+            if not cam_obj:
+                cam_data = bpy.data.cameras.new(name=nome)
+                cam_obj = bpy.data.objects.new(nome, cam_data)
+                bpy.context.scene.collection.objects.link(cam_obj)
+            cam_obj.data.type = 'PERSP'
+            cam_obj.location = local_vetor
+            direcao = focal_vetor - cam_obj.location
+            cam_obj.rotation_euler = direcao.to_track_quat('-Z', 'Y').to_euler()
+            return cam_obj
+
+        criar_e_apontar_camera("Camera_Esquerda", mathutils.Vector((alvo_centro.x - (dist_lateral * math.sin(angulo_diag)), alvo_centro.y - (dist_lateral * math.cos(angulo_diag)), altura_camera)), ponto_focal_alvo)
+        criar_e_apontar_camera("Camera_Direita", mathutils.Vector((alvo_centro.x + (dist_lateral * math.sin(angulo_diag)), alvo_centro.y - (dist_lateral * math.cos(angulo_diag)), altura_camera)), ponto_focal_alvo)
+        
+        bpy.context.scene.camera = cam_principal
 
     if renderizar and pasta_saida_renders:
         nome_trofeu = os.path.splitext(os.path.basename(caminho_svg))[0]
@@ -456,15 +548,33 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
             shutil.rmtree(pasta_dest)
         os.makedirs(pasta_dest)
         
+        # --- BLINDAGEM DO CYCLES PARA BACKGROUND ---
+        scene = bpy.context.scene
+        scene.render.engine = 'CYCLES'
+        
+        # Configura o Cycles para usar a CPU em modo background (Evita o travamento de contexto da GPU)
+        try:
+            cycles_prefs = bpy.context.preferences.addons['cycles'].preferences
+            cycles_prefs.compute_device_type = 'NONE' # Força o uso seguro da CPU no subprocesso
+            scene.cycles.device = 'CPU'
+        except Exception:
+            pass
+            
+        # Otimizações para renderização rápida e limpa em background
+        scene.cycles.samples = int(cycles_samples) # Reduz o tempo de render mantendo alta qualidade
+        scene.cycles.use_denoising = True
+
         cameras = [bpy.data.objects.get("Camera_Principal"), bpy.data.objects.get("Camera_Esquerda"), bpy.data.objects.get("Camera_Direita")]
         for cam in cameras:
             if cam:
-                bpy.context.scene.camera = cam
-                bpy.context.scene.render.filepath = os.path.join(pasta_dest, f"{cam.name}.png")
+                scene.camera = cam
+                scene.render.filepath = os.path.join(pasta_dest, f"{cam.name}.png")
+                print(f">>> Renderizando câmera: {cam.name} via Cycles...", flush=True)
                 bpy.ops.render.render(write_still=True)
-        print(f"Renders salvos em: {pasta_dest}")
+                
+        print(f"Renders salvos em: {pasta_dest}", flush=True)
     else:
-        print(">>> Modo interativo ativo: O Blender permaneceu aberto com o troféu montado.")
+        print(">>> Modo interativo ativo: O Blender permaneceu aberto com o troféu montado.", flush=True)
 
 if __name__ == "__main__":
     if "--" in sys.argv:
@@ -480,5 +590,11 @@ if __name__ == "__main__":
         usar_textura = True
         if len(argv) > 4:
             usar_textura = argv[4].lower() == 'true'
-        
-        processar_svg_no_blender(caminho_svg, pasta_saida, caminho_blend, renderizar_automaticamente, usar_textura)
+            
+        cycles_samples = 128
+        if len(argv) > 5:
+            try:
+                cycles_samples = int(argv[5])
+            except:
+                cycles_samples = 128
+        processar_svg_no_blender(caminho_svg, pasta_saida, caminho_blend, renderizar_automaticamente, usar_textura, cycles_samples)
