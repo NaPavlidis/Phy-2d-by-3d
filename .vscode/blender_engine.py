@@ -365,7 +365,7 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
             links.new(tex_node.outputs['Color'], input_a_ad)
             
             # Aplica o fator de escurecimento CMYK equivalente ao usado no troféu
-            fator_escuro_cmyk = (0.40, 0.40, 0.40, 1.0)
+            fator_escuro_cmyk = (0.30, 0.30, 0.30, 0.5)
             input_b_ad.default_value = fator_escuro_cmyk
             
             links.new(saida_mix_ad, bsdf.inputs[pino_cor])
