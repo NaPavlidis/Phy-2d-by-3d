@@ -124,12 +124,12 @@ class VectorConvertProApp(tk.Tk):
         self.geometry("1100x750")
         self.configure(bg="#0B0F17")
 
-        self.blender_path = r"C:/Program Files/Blender Foundation/Blender 5.2/blender.exe"
+        self.blender_path = r"C:\Program Files\Blender Foundation\Blender 4.2\blender.exe"
         self.output_path = os.path.join(os.getcwd(), "imagens")
         self.blend_dir = os.getcwd()
         self.selected_blend = ""
         self.svg_selecionado = ""
-        self.cycles_samples = 128 # Valor padrão de samples
+        self.cycles_samples = 128
         
         self.render_auto_var = tk.BooleanVar(value=True)
         self.usar_textura_var = tk.BooleanVar(value=True)
@@ -261,7 +261,6 @@ class VectorConvertProApp(tk.Tk):
         if self.render_auto_var.get():
             comando.append("--background")
 
-        # Repassa todos os parâmetros incluindo a quantidade de samples configurada
         comando.extend([
             "--python", caminho_engine,
             "--",
@@ -274,12 +273,21 @@ class VectorConvertProApp(tk.Tk):
         ])
 
         try:
-            print(f">>> Executando Blender (Render: {self.render_auto_var.get()}, Textura: {self.usar_textura_var.get()}, Samples: {self.cycles_samples})")
+            print(f">>> Executando Blender...")
             processo = subprocess.Popen(comando, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='ignore')
             for linha in processo.stdout:
                 print(linha, end="")
-            processo.wait()
+                linha_limpa = linha.strip()
+                
+                # Atualização dinâmica na aba Processing baseada no status enviado pelo motor
+                if "Carregando estúdio base" in linha_limpa:
+                    self.after(0, lambda: self.lbl_status_processamento.configure(text="📂 Carregando Estúdio Base..."))
+                elif "Renderizando câmera:" in linha_limpa:
+                    self.after(0, lambda l=linha_limpa: self.lbl_status_processamento.configure(text=f"📷 {l}"))
+                elif "Renders salvos em:" in linha_limpa:
+                    self.after(0, lambda: self.lbl_status_processamento.configure(text="✅ Todas as imagens foram renderizadas!"))
 
+            processo.wait()
             self.after(0, lambda: self._show_screen("download"))
         except Exception as e:
             print(f"Erro ao executar o Blender via subprocess: {e}")
@@ -294,8 +302,14 @@ class VectorConvertProApp(tk.Tk):
         card = tk.Frame(screen, bg="#121824", bd=1, relief="solid")
         card.pack(fill="both", expand=True, padx=20, pady=10)
 
-        tk.Label(card, text="Processando Troféu no Blender...", fg="#FFFFFF", bg="#121824", font=("Helvetica", 14, "bold")).pack(pady=(60, 5))
-        tk.Label(card, text="🔄 Aplicando estúdio base, importando curvas e montando malhas...", fg="#A0AEC0", bg="#121824", font=("Helvetica", 10)).pack(pady=(0, 20))
+        tk.Label(card, text="Processando Troféu no Blender...", fg="#FFFFFF", bg="#121824", font=("Helvetica", 14, "bold")).pack(pady=(50, 10))
+        
+        # Rótulo dinâmico de status do processamento
+        self.lbl_status_processamento = tk.Label(card, text="🔄 Iniciando importação e montagem de malhas...", fg="#38BDF8", bg="#121824", font=("Helvetica", 11, "bold"))
+        self.lbl_status_processamento.pack(pady=10)
+
+        self.lbl_detalhe_processamento = tk.Label(card, text="Acompanhe o andamento das câmeras e renders na aba Processing.", fg="#A0AEC0", bg="#121824", font=("Helvetica", 9))
+        self.lbl_detalhe_processamento.pack(pady=(0, 20))
 
     def _build_download_screen(self):
         screen = tk.Frame(self.main_container, bg="#0B0F17")
