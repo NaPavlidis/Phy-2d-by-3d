@@ -33,7 +33,7 @@ def hex_para_rgba(hex_color, alpha=1.0):
     if not hex_color or not hex_color.startswith('#'): return (1.0, 1.0, 1.0, alpha)
     hex_color = hex_color.lstrip('#').lower()
     r, g, b = int(hex_color[0:2], 16)/255.0, int(hex_color[2:4], 16)/255.0, int(hex_color[4:6], 16)/255.0
-    fator_cmyk = 0.45 
+    fator_cmyk = 0.50 
     r, g, b = r * fator_cmyk, g * fator_cmyk, b * fator_cmyk
     def srgb_para_linear(c): return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
     return (srgb_para_linear(r), srgb_para_linear(g), srgb_para_linear(b), alpha)
