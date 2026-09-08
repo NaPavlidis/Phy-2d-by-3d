@@ -500,14 +500,46 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         tamanho_real = max(tamanho_z, tamanho_x / aspect_ratio) if aspect_ratio > 1 else max(tamanho_x, tamanho_z * aspect_ratio)
         distancia_base = (tamanho_real / 2.0) / math.tan(fov / 2.0) * 1.5
 
-        criar_e_apontar_camera("Camera_Principal", mathutils.Vector((alvo_centro.x, min_y - distancia_base, alvo_centro.z)))
+        # --- AJUSTE DE ALTURA E ÂNGULO DA CÂMERA PRINCIPAL ---
+        # Elevamos ligeiramente o ponto focal Z (focando um pouco acima do centro) e subimos a câmera 
+        # para que o topo e a região do adesivo fiquem perfeitamente enquadrados.
+        ponto_focal_alvo = alvo_centro.copy()
+        ponto_focal_alvo.z += tamanho_z * 0.1  # Desloca o foco um pouco para cima
         
+        altura_camera = alvo_centro.z + (tamanho_z * 0.1)  # Eleva a posição da câmera em relação ao centro
+        pos_cam_principal = mathutils.Vector((alvo_centro.x, min_y - distancia_base, altura_camera))
+        
+        cam_principal = bpy.data.objects.get("Camera_Principal")
+        if not cam_principal:
+            cam_data = bpy.data.cameras.new(name="Camera_Principal")
+            cam_principal = bpy.data.objects.new("Camera_Principal", cam_data)
+            bpy.context.scene.collection.objects.link(cam_principal)
+        
+        cam_principal.data.type = 'PERSP'
+        cam_principal.location = pos_cam_principal
+        direcao_principal = ponto_focal_alvo - cam_principal.location
+        cam_principal.rotation_euler = direcao_principal.to_track_quat('-Z', 'Y').to_euler()
+
+        # Ajuste proporcional para as câmeras laterais (Esquerda e Direita)
         angulo_diag = math.radians(35) 
         dist_lateral = distancia_base * 1.1
-        criar_e_apontar_camera("Camera_Esquerda", mathutils.Vector((alvo_centro.x - (dist_lateral * math.sin(angulo_diag)), alvo_centro.y - (dist_lateral * math.cos(angulo_diag)), alvo_centro.z + (tamanho_z * 0.15))))
-        criar_e_apontar_camera("Camera_Direita", mathutils.Vector((alvo_centro.x + (dist_lateral * math.sin(angulo_diag)), alvo_centro.y - (dist_lateral * math.cos(angulo_diag)), alvo_centro.z + (tamanho_z * 0.15))))
         
-        bpy.context.scene.camera = bpy.data.objects.get("Camera_Principal")
+        def criar_e_apontar_camera(nome, local_vetor, focal_vetor):
+            cam_obj = bpy.data.objects.get(nome)
+            if not cam_obj:
+                cam_data = bpy.data.cameras.new(name=nome)
+                cam_obj = bpy.data.objects.new(nome, cam_data)
+                bpy.context.scene.collection.objects.link(cam_obj)
+            cam_obj.data.type = 'PERSP'
+            cam_obj.location = local_vetor
+            direcao = focal_vetor - cam_obj.location
+            cam_obj.rotation_euler = direcao.to_track_quat('-Z', 'Y').to_euler()
+            return cam_obj
+
+        criar_e_apontar_camera("Camera_Esquerda", mathutils.Vector((alvo_centro.x - (dist_lateral * math.sin(angulo_diag)), alvo_centro.y - (dist_lateral * math.cos(angulo_diag)), altura_camera)), ponto_focal_alvo)
+        criar_e_apontar_camera("Camera_Direita", mathutils.Vector((alvo_centro.x + (dist_lateral * math.sin(angulo_diag)), alvo_centro.y - (dist_lateral * math.cos(angulo_diag)), altura_camera)), ponto_focal_alvo)
+        
+        bpy.context.scene.camera = cam_principal
 
     if renderizar and pasta_saida_renders:
         nome_trofeu = os.path.splitext(os.path.basename(caminho_svg))[0]
