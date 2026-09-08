@@ -26,14 +26,14 @@ REGRAS_MATERIAIS = {
     "#84716b": { 'tipo': 'BASE', 'nome_material': 'Base_12MM', 'extrusao': 0.02, 'roughness': 0.3, 'transmission': 0.08, 'ior': 1.05},
     
     # ADESIVOS
-    '#ec268f': { 'tipo': 'ADESIVO', 'nome_material': 'Adesivo_Padrao', 'extrusao': 0.0001, 'roughness': 0.002, 'transmission': 0.5, 'ior': 1.3 }
+    '#ec268f': { 'tipo': 'ADESIVO', 'nome_material': 'Adesivo_Padrao', 'extrusao': 0.0001, 'roughness': 0.002, 'transmission': 0.2, 'ior': 1.2 }
 }
 
 def hex_para_rgba(hex_color, alpha=1.0):
     if not hex_color or not hex_color.startswith('#'): return (1.0, 1.0, 1.0, alpha)
     hex_color = hex_color.lstrip('#').lower()
     r, g, b = int(hex_color[0:2], 16)/255.0, int(hex_color[2:4], 16)/255.0, int(hex_color[4:6], 16)/255.0
-    fator_cmyk = 0.75 
+    fator_cmyk = 0.45 
     r, g, b = r * fator_cmyk, g * fator_cmyk, b * fator_cmyk
     def srgb_para_linear(c): return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
     return (srgb_para_linear(r), srgb_para_linear(g), srgb_para_linear(b), alpha)
@@ -335,61 +335,40 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
             img_blender = bpy.data.images.get(img_nome_arquivo)
             if not img_blender and os.path.exists(caminho_imagem):
                 img_blender = bpy.data.images.load(filepath=caminho_imagem)
+            
             tex_node = nodes.new('ShaderNodeTexImage')
             if img_blender:
                 tex_node.image = img_blender
-            tex_node.location = (-300, 300)
-            links.new(tex_node.outputs['Color'], bsdf.inputs[pino_cor])
-            
-        elif 'textura' in regra and regra['textura'] and usar_textura:
-            caminho_textura = os.path.join(pasta_script_atual, "textura", regra['textura'])
-            
-            if os.path.exists(caminho_textura):
-                tex_node = nodes.new('ShaderNodeTexImage')
-                tex_node.location = (-600, 300)
-                tex_node.projection = 'BOX' 
-                tex_node.projection_blend = 0.15 
-                
-                tex_coord = nodes.new('ShaderNodeTexCoord')
-                tex_coord.location = (-1000, 300)
-                mapping_node = nodes.new('ShaderNodeMapping')
-                mapping_node.location = (-800, 300)
-                escala = regra.get('escala_textura', 1.0)
-                mapping_node.inputs['Scale'].default_value = (escala, escala, escala)
+            tex_node.location = (-600, 300)
 
-                links.new(tex_coord.outputs['Object'], mapping_node.inputs['Vector'])
-                links.new(mapping_node.outputs['Vector'], tex_node.inputs['Vector'])
-                
-                img_nome_mdf = os.path.basename(caminho_textura)
-                img_blender = bpy.data.images.get(img_nome_mdf)
-                if not img_blender:
-                    img_blender = bpy.data.images.load(filepath=caminho_textura)
-                tex_node.image = img_blender
-
-                if bpy.app.version >= (3, 4, 0):
-                    mix_node = nodes.new('ShaderNodeMix')
-                    mix_node.data_type = 'RGBA'
-                    mix_node.blend_type = 'MULTIPLY'
-                    input_fac = mix_node.inputs.get('Factor', mix_node.inputs[0])
-                    input_a = mix_node.inputs.get('A', mix_node.inputs[6])
-                    input_b = mix_node.inputs.get('B', mix_node.inputs[7])
-                    saida_mix = mix_node.outputs.get('Result', mix_node.outputs[2])
-                else:
-                    mix_node = nodes.new('ShaderNodeMixRGB')
-                    mix_node.blend_type = 'MULTIPLY'
-                    input_fac = mix_node.inputs['Fac']
-                    input_a = mix_node.inputs['Color1']
-                    input_b = mix_node.inputs['Color2']
-                    saida_mix = mix_node.outputs['Color']
-
-                mix_node.location = (-300, 300)
-                input_fac.default_value = 1.0
-                links.new(tex_node.outputs['Color'], input_a)
-                input_b.default_value = cor_svg
-                links.new(saida_mix, bsdf.inputs[pino_cor])
+            # --- COMPENSAÇÃO DE ESCURO CMYK PARA O ADESIVO ---
+            # Adiciona um nó de Mix para escurecer levemente a imagem do adesivo com base no fator CMYK (0.75)
+            if bpy.app.version >= (3, 4, 0):
+                mix_adesivo = nodes.new('ShaderNodeMix')
+                mix_adesivo.data_type = 'RGBA'
+                mix_adesivo.blend_type = 'MULTIPLY'
+                input_fac_ad = mix_adesivo.inputs.get('Factor', mix_adesivo.inputs[0])
+                input_a_ad = mix_adesivo.inputs.get('A', mix_adesivo.inputs[6])
+                input_b_ad = mix_adesivo.inputs.get('B', mix_adesivo.inputs[7])
+                saida_mix_ad = mix_adesivo.outputs.get('Result', mix_adesivo.outputs[2])
             else:
-                if preenchimento_val != 'Nenhum':
-                    bsdf.inputs[pino_cor].default_value = cor_svg
+                mix_adesivo = nodes.new('ShaderNodeMixRGB')
+                mix_adesivo.blend_type = 'MULTIPLY'
+                input_fac_ad = mix_adesivo.inputs['Fac']
+                input_a_ad = mix_adesivo.inputs['Color1']
+                input_b_ad = mix_adesivo.inputs['Color2']
+                saida_mix_ad = mix_adesivo.outputs['Color']
+
+            mix_adesivo.location = (-300, 300)
+            input_fac_ad.default_value = 0.8  # Intensidade do escurecimento CMYK (Ajustável de 0.0 a 1.0)
+            
+            links.new(tex_node.outputs['Color'], input_a_ad)
+            
+            # Aplica o fator de escurecimento CMYK equivalente ao usado no troféu
+            fator_escuro_cmyk = (0.40, 0.40, 0.40, 1.0)
+            input_b_ad.default_value = fator_escuro_cmyk
+            
+            links.new(saida_mix_ad, bsdf.inputs[pino_cor])
         else:
             if preenchimento_val != 'Nenhum':
                 bsdf.inputs[pino_cor].default_value = cor_svg
