@@ -65,9 +65,10 @@ def criar_uv_perfeito(obj):
 def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="", renderizar=True, usar_textura=True, cycles_samples=128):
     # 1. Carrega o estúdio base se fornecido
     if caminho_blend and os.path.exists(caminho_blend):
-        print(f">>> Carregando estúdio base: {caminho_blend}")
+        print(f">>> Carregando estúdio base: {caminho_blend}", flush=True)
         bpy.ops.wm.open_mainfile(filepath=caminho_blend)
 
+    print(f">>> Analisando e importando o arquivo SVG...", flush=True)
     ET.register_namespace('', "http://www.w3.org/2000/svg")
     try:
         tree = ET.parse(caminho_svg)
@@ -176,6 +177,7 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         if obj.name not in colecao_ativa.objects:
             colecao_ativa.objects.link(obj)
 
+    print(f">>> Convertendo curvas e montando camadas 3D...", flush=True)
     # Conversão direta via dados (Nível de API)
     malhas_convertidas = []
     for obj in objetos_importados:
@@ -234,9 +236,9 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         })
 
     # --- ORDENAÇÃO POR CAMADAS DO SVG ---
-    # As bases vão primeiro para servirem de fundação, e o restante das peças segue a ordem de camadas do SVG.
     elementos_mapeados.sort(key=lambda x: (0 if x['eh_base'] else 1, x['indice_svg']))
 
+    print(f">>> Aplicando materiais, texturas e adesivos...", flush=True)
     idx_imagem_global = 0
     suporte_dos_objetos = {}
 
@@ -293,7 +295,7 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         mod_solidify = obj.modifiers.new(name="extrusao", type='SOLIDIFY')
         mod_solidify.thickness = regra['extrusao']
         mod_solidify.offset = 1.0 
-        mod_solidify.use_even_offset = True     
+        mod_solidify.use_even_offset = True    
         mod_solidify.use_quality_normals = True 
         mod_solidify.solidify_mode = 'NON_MANIFOLD' 
         
@@ -328,7 +330,6 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         preenchimento_val = dados.get('preenchimento', 'Nenhum')
         cor_svg = hex_para_rgba(preenchimento_val) if preenchimento_val != 'Nenhum' else (0.8, 0.6, 0.4, 1.0)
 
-        # Aplicação rigorosa de imagem EXCLUSIVAMENTE para materiais do tipo ADESIVO
         if tipo_material == 'ADESIVO' and imagens_disponiveis:
             caminho_imagem = imagens_disponiveis[idx_imagem_global % len(imagens_disponiveis)]
             idx_imagem_global += 1 
@@ -342,8 +343,6 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
                 tex_node.image = img_blender
             tex_node.location = (-600, 300)
 
-            # --- COMPENSAÇÃO DE ESCURO CMYK PARA O ADESIVO ---
-            # Adiciona um nó de Mix para escurecer levemente a imagem do adesivo com base no fator CMYK (0.75)
             if bpy.app.version >= (3, 4, 0):
                 mix_adesivo = nodes.new('ShaderNodeMix')
                 mix_adesivo.data_type = 'RGBA'
@@ -361,11 +360,10 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
                 saida_mix_ad = mix_adesivo.outputs['Color']
 
             mix_adesivo.location = (-300, 300)
-            input_fac_ad.default_value = 0.8  # Intensidade do escurecimento CMYK (Ajustável de 0.0 a 1.0)
+            input_fac_ad.default_value = 0.8  
             
             links.new(tex_node.outputs['Color'], input_a_ad)
             
-            # Aplica o fator de escurecimento CMYK equivalente ao usado no troféu
             fator_escuro_cmyk = (0.30, 0.30, 0.30, 0.5)
             input_b_ad.default_value = fator_escuro_cmyk
             
@@ -402,8 +400,8 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
             atual = suporte_dos_objetos.get(atual)
         return False
 
-    print("Torféu montado com sucesso!!",flush=True)
-    # --- FILTRO RIGOROSO DE ROTAÇÃO (As bases NUNCA rotacionam, apenas o corpo do troféu) ---
+    print("Torféu montado com sucesso!!", flush=True)
+
     pecas_corpo = []
     for item in elementos_mapeados:
         obj = item['obj']
@@ -412,7 +410,7 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
             if obj.name in bpy.data.objects:
                 deve_rotacionar = True 
                 if t_mat in ['BASE', 'BASE_FINA']: 
-                    deve_rotacionar = False  # Base fica intacta no plano horizontal
+                    deve_rotacionar = False  
                 elif t_mat == 'ADESIVO' and esta_apoiado_na_base(obj.name): 
                     deve_rotacionar = False 
                 
@@ -462,35 +460,11 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         tamanho_z = max_z - min_z
         tamanho_maximo = max(tamanho_x, tamanho_y, tamanho_z)
 
-        # --- DINAMIZAÇÃO DA ILUMINAÇÃO DE ESTÚDIO (.BLEND EXISTENTE) ---
-        # Procura por luzes de preenchimento ou estúdio no .blend para reajustá-las proporcionalmente ao tamanho do troféu
         for obj_cena in bpy.context.scene.objects:
             if obj_cena.type == 'LIGHT':
-                # Mantém a luz posicionada em uma órbita proporcional ao tamanho do troféu importado
                 direcao_luz = (obj_cena.location - alvo_centro).normalized()
                 distancia_luz = max(tamanho_maximo * 2.0, 0.5)
                 obj_cena.location = alvo_centro + (direcao_luz * distancia_luz)
-                
-        # Se houver nó de rotação no World (HDRI), ajusta a orientação para refletir uniformemente
-        world = bpy.context.scene.world
-        if world and world.use_nodes:
-            for node in world.node_tree.nodes:
-                if node.type == 'MAPPING':
-                    # Opcional: Garanta que o mapeamento do HDRI acompanhe o centro se necessário
-                    pass
-
-
-        def criar_e_apontar_camera(nome, local_vetor):
-            cam_obj = bpy.data.objects.get(nome)
-            if not cam_obj:
-                cam_data = bpy.data.cameras.new(name=nome)
-                cam_obj = bpy.data.objects.new(nome, cam_data)
-                bpy.context.scene.collection.objects.link(cam_obj)
-            cam_obj.data.type = 'PERSP'
-            cam_obj.location = local_vetor
-            direcao = alvo_centro - cam_obj.location
-            cam_obj.rotation_euler = direcao.to_track_quat('-Z', 'Y').to_euler()
-            return cam_obj
 
         dummy_cam_data = bpy.data.cameras.new("temp_cam")
         dummy_cam_obj = bpy.data.objects.new("temp_cam_obj", dummy_cam_data)
@@ -501,13 +475,10 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         tamanho_real = max(tamanho_z, tamanho_x / aspect_ratio) if aspect_ratio > 1 else max(tamanho_x, tamanho_z * aspect_ratio)
         distancia_base = (tamanho_real / 2.0) / math.tan(fov / 2.0) * 1.5
 
-        # --- AJUSTE DE ALTURA E ÂNGULO DA CÂMERA PRINCIPAL ---
-        # Elevamos ligeiramente o ponto focal Z (focando um pouco acima do centro) e subimos a câmera 
-        # para que o topo e a região do adesivo fiquem perfeitamente enquadrados.
         ponto_focal_alvo = alvo_centro.copy()
-        ponto_focal_alvo.z += tamanho_z * 0.07  # Desloca o foco um pouco para cima
+        ponto_focal_alvo.z += tamanho_z * 0.07  
         
-        altura_camera = alvo_centro.z + (tamanho_z * 0.4)  # Eleva a posição da câmera em relação ao centro
+        altura_camera = alvo_centro.z + (tamanho_z * 0.4)  
         pos_cam_principal = mathutils.Vector((alvo_centro.x, min_y - distancia_base, altura_camera))
         
         cam_principal = bpy.data.objects.get("Camera_Principal")
@@ -521,7 +492,6 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         direcao_principal = ponto_focal_alvo - cam_principal.location
         cam_principal.rotation_euler = direcao_principal.to_track_quat('-Z', 'Y').to_euler()
 
-        # Ajuste proporcional para as câmeras laterais (Esquerda e Direita)
         angulo_diag = math.radians(35) 
         dist_lateral = distancia_base * 1.1
         
@@ -594,7 +564,6 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
             # Dispara o render real otimizado (bloqueante)
             bpy.ops.render.render(write_still=True)
             
-            # Assim que o render é concluído, para a thread e força 100% imediato
             parar_thread.set()
             t_prog.join(timeout=0.5)
             
