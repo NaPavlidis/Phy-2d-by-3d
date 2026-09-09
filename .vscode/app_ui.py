@@ -117,9 +117,7 @@ class SettingsWindow(tk.Toplevel):
         except ValueError:
             self.parent_app.cycles_samples = 128
             
-        # Salva no arquivo JSON em disco
         self.parent_app.salvar_configuracoes_disco()
-        
         messagebox.showinfo("Sucesso", "Configurações salvas permanentemente!", parent=self)
         self.destroy()
 
@@ -131,7 +129,6 @@ class VectorConvertProApp(tk.Tk):
         self.geometry("1100x750")
         self.configure(bg="#0B0F17")
 
-        # Padrões iniciais (serão sobrescritos se existir config.json)
         self.blender_path = r"C:\Program Files\Blender Foundation\Blender 4.2\blender.exe"
         self.output_path = os.path.join(os.getcwd(), "imagens")
         self.blend_dir = os.getcwd()
@@ -139,7 +136,6 @@ class VectorConvertProApp(tk.Tk):
         self.svg_selecionado = ""
         self.cycles_samples = 128
 
-        # Carrega as configurações salvas do disco
         self.carregar_configuracoes_disco()
         
         self.render_auto_var = tk.BooleanVar(value=True)
@@ -282,6 +278,9 @@ class VectorConvertProApp(tk.Tk):
             self.lbl_arquivo_selecionado.configure(text=os.path.basename(file_path), fg="#34D399")
             
             self.lbl_status_processamento.configure(text="🔄 Iniciando importação e montagem de malhas...")
+            self.lbl_samples_info.configure(text=f"Meta de Samples: {self.cycles_samples} (Aguardando renderização...)")
+            self.atualizar_barra_progresso(0)
+            
             for widget in self.frame_historico.winfo_children():
                 widget.destroy()
                 
@@ -290,6 +289,11 @@ class VectorConvertProApp(tk.Tk):
 
     def _iniciar_processamento_background(self):
         threading.Thread(target=self._executar_blender_subprocess, daemon=True).start()
+
+    def atualizar_amostras_camera_ui(self, atual, total, faltam, porcentagem, nome_cam):
+        self.lbl_status_processamento.configure(text=f"📷 Renderizando: {nome_cam}")
+        self.lbl_samples_info.configure(text=f"[{nome_cam}] Samples: {atual} / {total}  |  Faltam: {faltam}")
+        self.atualizar_barra_progresso(porcentagem)
 
     def _executar_blender_subprocess(self):
         diretorio_atual = os.path.dirname(os.path.abspath(__file__))
@@ -330,7 +334,25 @@ class VectorConvertProApp(tk.Tk):
                     self.after(0, lambda: self.adicionar_passo_concluido("📂 Estúdio base carregado com sucesso!", "🔄 Importando curvas e aplicando materiais..."))
                 elif "Renderizando câmera:" in linha_limpa:
                     cam_nome = linha_limpa.split("Renderizando câmera:")[-1].split("via")[0].strip()
-                    self.after(0, lambda c=cam_nome: self.adicionar_passo_concluido(f"✔ Câmera {c} renderizada com sucesso!", f"🔄 Renderizando próxima etapa..."))
+                    self.after(0, lambda c=cam_nome: self.adicionar_passo_concluido(f"✔ Câmera {c} renderizada com sucesso!", f"📷 Renderizando Câmera {c} (Ciclo Cycles)..."))
+                elif "[SAMPLE_PROGRESS]" in linha_limpa:
+                    try:
+                        # Ex: [SAMPLE_PROGRESS] 45/128|CAM:Camera_Principal
+                        parte_dados, parte_cam = linha_limpa.split("|CAM:")
+                        amostras_str = parte_dados.split(" ")[1]
+                        atual_str, total_str = amostras_str.split("/")
+                        
+                        atual = int(atual_str)
+                        total = int(total_str)
+                        porcentagem = (atual / total) * 100
+                        faltam = total - atual
+                        
+                        nome_cam_atual = parte_cam.strip()
+                        
+                        self.after(0, lambda a=atual, t=total, f=faltam, p=porcentagem, c=nome_cam_atual: 
+                                   self.atualizar_amostras_camera_ui(a, t, f, p, c))
+                    except:
+                        pass    
                 elif "Renders salvos em:" in linha_limpa or "Modo interativo ativo" in linha_limpa:
                     self.after(0, lambda: self.adicionar_passo_concluido("✔ Todas as imagens foram processadas com êxito!", "✅ Finalizando processo..."))
 
@@ -340,6 +362,20 @@ class VectorConvertProApp(tk.Tk):
             print(f"Erro ao executar o Blender via subprocess: {e}")
             messagebox.showerror("Erro Crítico", f"Não foi possível rodar o Blender:\n{e}")
 
+    def atualizar_amostras_ui(self, atual, total, faltam, porcentagem):
+        self.lbl_samples_info.configure(text=f"Samples Concluídas: {atual} / {total}  |  Faltam: {faltam} samples")
+        self.atualizar_barra_progresso(porcentagem)
+
+    def atualizar_barra_progresso(self, porcentagem):
+        # Obtém a largura atual exata do canvas dinamicamente para preencher 100% de ponta a ponta
+        largura_atual = self.canvas_barra.winfo_width()
+        if largura_atual < 10:  # Fallback caso o canvas ainda esteja se dimensionando
+            largura_atual = 440
+            
+        largura_preenchimento = (porcentagem / 100.0) * largura_atual
+        self.canvas_barra.coords(self.retangulo_progresso, 0, 0, largura_preenchimento, 16)
+        self.lbl_porcentagem.configure(text=f"{int(porcentagem)}%")
+        
     def adicionar_passo_concluido(self, texto_concluido, novo_status):
         lbl_hist = tk.Label(self.frame_historico, text=texto_concluido, fg="#34D399", bg="#121824", font=("Helvetica", 9, "bold"), anchor="w")
         lbl_hist.pack(fill="x", pady=2)
@@ -347,6 +383,8 @@ class VectorConvertProApp(tk.Tk):
 
     def tag_concluido(self):
         self.lbl_status_processamento.configure(text="✅ Processamento Concluído!")
+        self.atualizar_barra_progresso(100)
+        self.lbl_samples_info.configure(text=f"Renderização Finalizada (100% Concluído)")
         self._show_screen("download")
 
     def _build_processing_screen(self):
@@ -358,13 +396,32 @@ class VectorConvertProApp(tk.Tk):
         card = tk.Frame(screen, bg="#121824", bd=1, relief="solid")
         card.pack(fill="both", expand=True, padx=20, pady=10)
 
-        tk.Label(card, text="Processando Troféu no Blender...", fg="#FFFFFF", bg="#121824", font=("Helvetica", 14, "bold")).pack(pady=(30, 10))
+        tk.Label(card, text="Processando Troféu no Blender...", fg="#FFFFFF", bg="#121824", font=("Helvetica", 14, "bold")).pack(pady=(20, 5))
         
         self.lbl_status_processamento = tk.Label(card, text="🔄 Iniciando importação e montagem de malhas...", fg="#38BDF8", bg="#121824", font=("Helvetica", 11, "bold"))
         self.lbl_status_processamento.pack(pady=5)
 
+        # --- SEÇÃO DA BARRA DE PROGRESSO DE SAMPLES ---
+        frame_progresso_container = tk.Frame(card, bg="#121824")
+        frame_progresso_container.pack(fill="x", padx=40, pady=10)
+
+        self.lbl_samples_info = tk.Label(frame_progresso_container, text="Aguardando início do Cycles...", fg="#A0AEC0", bg="#121824", font=("Helvetica", 9, "bold"))
+        self.lbl_samples_info.pack(anchor="w", pady=(0, 4))
+
+        # Criação visual da barra com Canvas
+        f_bar_bg = tk.Frame(frame_progresso_container, bg="#0B0F17", bd=1, relief="solid")
+        f_bar_bg.pack(fill="x", ipady=2)
+        
+        self.canvas_barra = tk.Canvas(f_bar_bg, bg="#080C14", height=16, highlightthickness=0)
+        self.canvas_barra.pack(fill="x")
+        self.retangulo_progresso = self.canvas_barra.create_rectangle(0, 0, 0, 16, fill="#38BDF8", width=0)
+
+        self.lbl_porcentagem = tk.Label(frame_progresso_container, text="0%", fg="#38BDF8", bg="#121824", font=("Helvetica", 9, "bold"))
+        self.lbl_porcentagem.pack(anchor="e", pady=(2, 0))
+
+        # Histórico Acumulado
         self.frame_historico = tk.Frame(card, bg="#121824")
-        self.frame_historico.pack(fill="x", padx=30, pady=15)
+        self.frame_historico.pack(fill="x", padx=40, pady=5)
 
     def _build_download_screen(self):
         screen = tk.Frame(self.main_container, bg="#0B0F17")
