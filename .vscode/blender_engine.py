@@ -505,9 +505,9 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         # Elevamos ligeiramente o ponto focal Z (focando um pouco acima do centro) e subimos a câmera 
         # para que o topo e a região do adesivo fiquem perfeitamente enquadrados.
         ponto_focal_alvo = alvo_centro.copy()
-        ponto_focal_alvo.z += tamanho_z * 0.09  # Desloca o foco um pouco para cima
+        ponto_focal_alvo.z += tamanho_z * 0.07  # Desloca o foco um pouco para cima
         
-        altura_camera = alvo_centro.z + (tamanho_z * 0.25)  # Eleva a posição da câmera em relação ao centro
+        altura_camera = alvo_centro.z + (tamanho_z * 0.4)  # Eleva a posição da câmera em relação ao centro
         pos_cam_principal = mathutils.Vector((alvo_centro.x, min_y - distancia_base, altura_camera))
         
         cam_principal = bpy.data.objects.get("Camera_Principal")
@@ -581,7 +581,6 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
             parar_thread = threading.Event()
 
             def atualizar_progresso_fluido():
-                # Avança a contagem de forma fluida até quase o final enquanto o render processa
                 atual = 0
                 limite_simulado = max(1, total_samples - 2)
                 while not parar_thread.is_set() and atual < limite_simulado:
