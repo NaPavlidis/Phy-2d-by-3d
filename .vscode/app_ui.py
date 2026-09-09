@@ -185,7 +185,7 @@ class VectorConvertProApp(tk.Tk):
         }
         try:
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-                json.dump(dados, f, indent=4)
+                json.dump(  dados, f, indent=4)
         except Exception as e:
             print(f"Erro ao salvar configurações no disco: {e}")
 
@@ -329,15 +329,20 @@ class VectorConvertProApp(tk.Tk):
                 print(linha, end="")
                 linha_limpa = linha.strip()
                 
-                if "Carregando estúdio base" in linha_limpa and not estudio_registrado:
-                    estudio_registrado = True
-                    self.after(0, lambda: self.adicionar_passo_concluido("📂 Estúdio base carregado com sucesso!", "🔄 Importando curvas e aplicando materiais..."))
+                # Captura e atualiza o status de cada fase anterior ao render
+                if "Carregando estúdio base" in linha_limpa:
+                    self.after(0, lambda: self.lbl_status_processamento.configure(text="📂 Abrindo arquivo de estúdio base..."))
+                elif "Analisando e importando" in linha_limpa:
+                    self.after(0, lambda: self.adicionar_passo_concluido("✔ Estúdio carregado com sucesso!", "📐 Lendo dados do arquivo SVG..."))
+                elif "Convertendo curvas" in linha_limpa:
+                    self.after(0, lambda: self.adicionar_passo_concluido("✔ SVG importado com sucesso!", "⚙ Convertendo curvas e montando camadas..."))
+                elif "Aplicando materiais" in linha_limpa:
+                    self.after(0, lambda: self.adicionar_passo_concluido("✔ Malhas 3D montadas!", "🎨 Aplicando MDF, Acrílico e Texturas..."))
                 elif "Renderizando câmera:" in linha_limpa:
                     cam_nome = linha_limpa.split("Renderizando câmera:")[-1].split("via")[0].strip()
-                    self.after(0, lambda c=cam_nome: self.adicionar_passo_concluido(f"✔ Câmera {c} renderizada com sucesso!", f"📷 Renderizando Câmera {c} (Ciclo Cycles)..."))
+                    self.after(0, lambda c=cam_nome: self.adicionar_passo_concluido("✔ Materiais aplicados com sucesso!", f"📷 Renderizando Câmera {c}..."))
                 elif "[SAMPLE_PROGRESS]" in linha_limpa:
                     try:
-                        # Ex: [SAMPLE_PROGRESS] 45/128|CAM:Camera_Principal
                         parte_dados, parte_cam = linha_limpa.split("|CAM:")
                         amostras_str = parte_dados.split(" ")[1]
                         atual_str, total_str = amostras_str.split("/")
@@ -348,13 +353,12 @@ class VectorConvertProApp(tk.Tk):
                         faltam = total - atual
                         
                         nome_cam_atual = parte_cam.strip()
-                        
                         self.after(0, lambda a=atual, t=total, f=faltam, p=porcentagem, c=nome_cam_atual: 
                                    self.atualizar_amostras_camera_ui(a, t, f, p, c))
                     except:
-                        pass    
+                        pass
                 elif "Renders salvos em:" in linha_limpa or "Modo interativo ativo" in linha_limpa:
-                    self.after(0, lambda: self.adicionar_passo_concluido("✔ Todas as imagens foram processadas com êxito!", "✅ Finalizando processo..."))
+                    self.after(0, lambda: self.adicionar_passo_concluido("✔ Todas as imagens renderizadas!", "✅ Finalizando processo..."))
 
             processo.wait()
             self.after(0, lambda: self.tag_concluido())
