@@ -504,9 +504,9 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         # Elevamos ligeiramente o ponto focal Z (focando um pouco acima do centro) e subimos a câmera 
         # para que o topo e a região do adesivo fiquem perfeitamente enquadrados.
         ponto_focal_alvo = alvo_centro.copy()
-        ponto_focal_alvo.z += tamanho_z * 0.09  # Desloca o foco um pouco para cima
+        ponto_focal_alvo.z += tamanho_z * 0.1  # Desloca o foco um pouco para cima
         
-        altura_camera = alvo_centro.z + (tamanho_z * 0.2)  # Eleva a posição da câmera em relação ao centro
+        altura_camera = alvo_centro.z + (tamanho_z * 0.5)  # Eleva a posição da câmera em relação ao centro
         pos_cam_principal = mathutils.Vector((alvo_centro.x, min_y - distancia_base, altura_camera))
         
         cam_principal = bpy.data.objects.get("Camera_Principal")
