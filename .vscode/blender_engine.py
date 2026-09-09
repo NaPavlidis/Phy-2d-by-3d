@@ -6,6 +6,7 @@ import mathutils
 import math 
 import sys
 import shutil
+import threading
 
 # --- REGRAS DE MATERIAIS AGRUPADOS POR TIPO ---
 REGRAS_MATERIAIS = {    
@@ -504,9 +505,9 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         # Elevamos ligeiramente o ponto focal Z (focando um pouco acima do centro) e subimos a câmera 
         # para que o topo e a região do adesivo fiquem perfeitamente enquadrados.
         ponto_focal_alvo = alvo_centro.copy()
-        ponto_focal_alvo.z += tamanho_z * 0.1  # Desloca o foco um pouco para cima
+        ponto_focal_alvo.z += tamanho_z * 0.09  # Desloca o foco um pouco para cima
         
-        altura_camera = alvo_centro.z + (tamanho_z * 0.5)  # Eleva a posição da câmera em relação ao centro
+        altura_camera = alvo_centro.z + (tamanho_z * 0.25)  # Eleva a posição da câmera em relação ao centro
         pos_cam_principal = mathutils.Vector((alvo_centro.x, min_y - distancia_base, altura_camera))
         
         cam_principal = bpy.data.objects.get("Camera_Principal")
@@ -548,30 +549,58 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
             shutil.rmtree(pasta_dest)
         os.makedirs(pasta_dest)
         
-        # --- BLINDAGEM DO CYCLES PARA BACKGROUND ---
         scene = bpy.context.scene
         scene.render.engine = 'CYCLES'
         
-        # Configura o Cycles para usar a CPU em modo background (Evita o travamento de contexto da GPU)
         try:
             cycles_prefs = bpy.context.preferences.addons['cycles'].preferences
-            cycles_prefs.compute_device_type = 'NONE' # Força o uso seguro da CPU no subprocesso
+            cycles_prefs.compute_device_type = 'NONE'
             scene.cycles.device = 'CPU'
         except Exception:
             pass
             
-        # Otimizações para renderização rápida e limpa em background
-        scene.cycles.samples = int(cycles_samples) # Reduz o tempo de render mantendo alta qualidade
+        total_samples = int(cycles_samples)
+        scene.cycles.samples = total_samples
         scene.cycles.use_denoising = True
 
-        cameras = [bpy.data.objects.get("Camera_Principal"), bpy.data.objects.get("Camera_Esquerda"), bpy.data.objects.get("Camera_Direita")]
-        for cam in cameras:
-            if cam:
-                scene.camera = cam
-                scene.render.filepath = os.path.join(pasta_dest, f"{cam.name}.png")
-                print(f">>> Renderizando câmera: {cam.name} via Cycles...", flush=True)
-                bpy.ops.render.render(write_still=True)
-                
+        cameras = [
+            ("Camera_Principal", bpy.data.objects.get("Camera_Principal")),
+            ("Camera_Esquerda", bpy.data.objects.get("Camera_Esquerda")),
+            ("Camera_Direita", bpy.data.objects.get("Camera_Direita"))
+        ]
+        cameras_validas = [(nome, obj) for nome, obj in cameras if obj]
+
+        for idx_cam, (nome_cam, cam) in enumerate(cameras_validas):
+            scene.camera = cam
+            caminho_arquivo_img = os.path.join(pasta_dest, f"{nome_cam}.png")
+            scene.render.filepath = caminho_arquivo_img
+            
+            print(f">>> Renderizando câmera: {nome_cam} via Cycles...", flush=True)
+            
+            import time
+            parar_thread = threading.Event()
+
+            def atualizar_progresso_fluido():
+                # Avança a contagem de forma fluida até quase o final enquanto o render processa
+                atual = 0
+                limite_simulado = max(1, total_samples - 2)
+                while not parar_thread.is_set() and atual < limite_simulado:
+                    atual += 1
+                    print(f"[SAMPLE_PROGRESS] {atual}/{total_samples}|CAM:{nome_cam}", flush=True)
+                    time.sleep(0.08)
+
+            t_prog = threading.Thread(target=atualizar_progresso_fluido, daemon=True)
+            t_prog.start()
+
+            # Dispara o render real otimizado (bloqueante)
+            bpy.ops.render.render(write_still=True)
+            
+            # Assim que o render é concluído, para a thread e força 100% imediato
+            parar_thread.set()
+            t_prog.join(timeout=0.5)
+            
+            print(f"[SAMPLE_PROGRESS] {total_samples}/{total_samples}|CAM:{nome_cam}", flush=True)
+
         print(f"Renders salvos em: {pasta_dest}", flush=True)
     else:
         print(">>> Modo interativo ativo: O Blender permaneceu aberto com o troféu montado.", flush=True)
