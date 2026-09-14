@@ -19,7 +19,10 @@ REGRAS_MATERIAIS = {
     '#fefefe': { 'tipo': 'MDF', 'nome_material': 'MDF_3mm', 'extrusao': 0.003, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.15},
     '#e6e7e8': { 'tipo': 'MDF', 'nome_material': 'MDF_6mm', 'extrusao': 0.006, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.15},
     '#373435': { 'tipo': 'PLOTTER', 'nome_material': 'PLOTTER', 'extrusao': 0.0001, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.15},
-                
+
+    #RESINA
+    '#00ff00': { 'tipo': 'RESINA_AREA', 'nome_material': 'Area_Resina', 'extrusao': 0.0, 'roughness': 0.0, 'transmission': 0.0 },
+
     # BASES
     "#f58634": { 'tipo': 'BASE', 'nome_material': 'Base_3MM', 'extrusao': 0.003, 'roughness': 0.2, 'transmission': 0.08, 'ior': 1.15},
     "#3e4095": { 'tipo': 'BASE', 'nome_material': 'Base_6MM', 'extrusao': 0.01, 'roughness': 0.2, 'transmission': 0.08, 'ior': 1.15},
@@ -63,7 +66,7 @@ def criar_uv_perfeito(obj):
         v_uv = (v.co.y - min_y) / altura
         uv_layer[loop.index].uv = (u, v_uv)
 
-def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="", renderizar=True, usar_textura=True, cycles_samples=128, usar_verniz=False):
+def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="", renderizar=True, usar_textura=True, cycles_samples=128, usar_verniz=False,caminho_modelo_resina=""):
     # 1. Carrega o estúdio base se fornecido
     if caminho_blend and os.path.exists(caminho_blend):
         print(f">>> Carregando estúdio base: {caminho_blend}", flush=True)
@@ -391,7 +394,51 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
 
         obj.data.materials.append(mat)
         bpy.context.view_layer.update()
+
+    # --- INSTANCIAÇÃO AUTOMÁTICA DE PEÇAS DE RESINA 3D ---
+    for item in elementos_mapeados:
+        if item['tipo_material'] == 'RESINA_AREA':
+            obj_marcado_svg = item['obj']
             
+            # 1. Calcula o centro exato da área de marcação do SVG
+            min_x, max_x, min_y, max_y = obter_caixa_de_colisao(obj_marcado_svg)
+            centro_x = (min_x + max_x) / 2.0
+            centro_y = (min_y + max_y) / 2.0
+            centro_z = obj_marcado_svg.location.z # Pega a altura Z onde a marcação ficou posicionada
+            
+            ponto_encaixe_3d = mathutils.Vector((centro_x, centro_y, centro_z))
+            
+            # 2. Se houver um arquivo 3D fornecido, importa e posiciona
+            if caminho_modelo_resina and os.path.exists(caminho_modelo_resina):
+                extensao = os.path.splitext(caminho_modelo_resina)[1].lower()
+                objs_antes_import = set(bpy.context.scene.objects)
+                
+                # Suporte aos formatos de modelos 3D mais comuns
+                if extensao in ['.obj', '.wavefront']:
+                    bpy.ops.wm.obj_import(filepath=caminho_modelo_resina)
+                elif extensao == '.fbx':
+                    bpy.ops.import_scene.fbx(filepath=caminho_modelo_resina)
+                elif extensao == '.stl':
+                    bpy.ops.wm.stl_import(filepath=caminho_modelo_resina)
+                elif extensao == '.blend':
+                    with bpy.data.libraries.load(caminho_modelo_resina, link=False) as (data_from, data_to):
+                        data_to.objects = data_from.objects
+                    for obj_carregado in data_to.objects:
+                        if obj_carregado is not None:
+                            bpy.context.scene.collection.objects.link(obj_carregado)
+                
+                novos_objs = list(set(bpy.context.scene.objects) - objs_antes_import)
+                if novos_objs:
+                    resina_3d_obj = novos_objs[0]
+                    # Posiciona no centro da marcação do SVG
+                    resina_3d_obj.location = ponto_encaixe_3d
+                    
+                    # Adiciona à lista de objetos para enquadramento da câmera se necessário
+                    objetos_importados.append(resina_3d_obj)
+            
+            # 3. Remove/Oculta a malha 2D guia que veio do SVG para não aparecer no render
+            bpy.data.objects.remove(obj_marcado_svg, do_unlink=True)
+        
     if os.path.exists(caminho_temp): os.remove(caminho_temp)
     
     def esta_apoiado_na_base(obj_name):
@@ -630,4 +677,8 @@ if __name__ == "__main__":
         if len(argv) > 6:
             usar_verniz = argv[6].lower() == 'true'
             
-        processar_svg_no_blender(caminho_svg, pasta_saida, caminho_blend, renderizar_automaticamente, usar_textura, cycles_samples, usar_verniz)
+        caminho_modelo_resina = ""
+        if len(argv) > 7:
+            caminho_modelo_resina = argv[7]
+            
+        processar_svg_no_blender(caminho_svg, pasta_saida, caminho_blend, renderizar_automaticamente, usar_textura, cycles_samples, usar_verniz, caminho_modelo_resina)
