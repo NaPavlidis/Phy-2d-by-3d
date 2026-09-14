@@ -20,17 +20,16 @@ class SettingsWindow(tk.Toplevel):
 
         self.parent_app = parent
         self.blender_path_var = tk.StringVar(value=parent.blender_path)
-        self.output_path_var = tk.StringVar(value=parent.output_path)
+        self.resina_dir_var = tk.StringVar(value=parent.resina_dir)
         self.blend_dir_var = tk.StringVar(value=parent.blend_dir)
         self.selected_blend_var = tk.StringVar(value=parent.selected_blend)
         self.cycles_samples_var = tk.StringVar(value=str(parent.cycles_samples))
-        self.usar_verniz_var = tk.BooleanVar(value=False)
         self._build_ui()
 
     def _build_ui(self):
         tk.Label(self, text="⚙ Configurações e Estúdios Base", fg="#FFFFFF", bg="#121824", font=("Helvetica", 12, "bold")).pack(anchor="w", padx=20, pady=(15, 10))
 
-        # Blender
+        # Executável do Blender
         f_b = tk.Frame(self, bg="#121824")
         f_b.pack(fill="x", padx=20, pady=5)
         tk.Label(f_b, text="Executável do Blender (blender.exe):", fg="#A0AEC0", bg="#121824", font=("Helvetica", 9)).pack(anchor="w", pady=(0, 2))
@@ -39,16 +38,16 @@ class SettingsWindow(tk.Toplevel):
         tk.Entry(sub_b, textvariable=self.blender_path_var, bg="#080C14", fg="#FFFFFF", bd=1, relief="solid", insertbackground="#FFFFFF").pack(side="left", fill="x", expand=True, ipady=4, padx=(0, 8))
         tk.Button(sub_b, text="Buscar...", bg="#1E2638", fg="#FFFFFF", bd=0, padx=10, command=self._select_blender).pack(side="right")
 
-        # Output
-        f_o = tk.Frame(self, bg="#121824")
-        f_o.pack(fill="x", padx=20, pady=5)
-        tk.Label(f_o, text="Pasta de Saída dos Renders:", fg="#A0AEC0", bg="#121824", font=("Helvetica", 9)).pack(anchor="w", pady=(0, 2))
-        sub_o = tk.Frame(f_o, bg="#121824")
-        sub_o.pack(fill="x")
-        tk.Entry(sub_o, textvariable=self.output_path_var, bg="#080C14", fg="#FFFFFF", bd=1, relief="solid", insertbackground="#FFFFFF").pack(side="left", fill="x", expand=True, ipady=4, padx=(0, 8))
-        tk.Button(sub_o, text="Buscar...", bg="#1E2638", fg="#FFFFFF", bd=0, padx=10, command=self._select_output).pack(side="right")
+        # Pasta de Modelos 3D (Resina)
+        f_r = tk.Frame(self, bg="#121824")
+        f_r.pack(fill="x", padx=20, pady=5)
+        tk.Label(f_r, text="Pasta dos Modelos 3D (Resina):", fg="#A0AEC0", bg="#121824", font=("Helvetica", 9)).pack(anchor="w", pady=(0, 2))
+        sub_r = tk.Frame(f_r, bg="#121824")
+        sub_r.pack(fill="x")
+        tk.Entry(sub_r, textvariable=self.resina_dir_var, bg="#080C14", fg="#FFFFFF", bd=1, relief="solid", insertbackground="#FFFFFF").pack(side="left", fill="x", expand=True, ipady=4, padx=(0, 8))
+        tk.Button(sub_r, text="Buscar...", bg="#1E2638", fg="#FFFFFF", bd=0, padx=10, command=self._select_resina_dir).pack(side="right")
 
-        # Pasta Blend
+        # Pasta dos Arquivos .Blend
         f_d = tk.Frame(self, bg="#121824")
         f_d.pack(fill="x", padx=20, pady=5)
         tk.Label(f_d, text="Pasta com os Arquivos .Blend (Estúdios Base):", fg="#A0AEC0", bg="#121824", font=("Helvetica", 9)).pack(anchor="w", pady=(0, 2))
@@ -80,9 +79,9 @@ class SettingsWindow(tk.Toplevel):
         f = filedialog.askopenfilename(title="Selecione o executável do Blender", filetypes=[("Executável Blender", "blender.exe"), ("Todos", "*.*")])
         if f: self.blender_path_var.set(f)
 
-    def _select_output(self):
-        f = filedialog.askdirectory(title="Selecione a Pasta de Saída dos Renders")
-        if f: self.output_path_var.set(f)
+    def _select_resina_dir(self):
+        f = filedialog.askdirectory(title="Selecione a Pasta de Modelos 3D (Resina)")
+        if f: self.resina_dir_var.set(f)
 
     def _select_blend_dir(self):
         f = filedialog.askdirectory(title="Selecione a Pasta contendo os arquivos .blend")
@@ -110,7 +109,7 @@ class SettingsWindow(tk.Toplevel):
 
     def _save_settings(self):
         self.parent_app.blender_path = self.blender_path_var.get()
-        self.parent_app.output_path = self.output_path_var.get()
+        self.parent_app.resina_dir = self.resina_dir_var.get()
         self.parent_app.blend_dir = self.blend_dir_var.get()
         self.parent_app.selected_blend = self.selected_blend_var.get()
         try:
@@ -119,6 +118,9 @@ class SettingsWindow(tk.Toplevel):
             self.parent_app.cycles_samples = 128
             
         self.parent_app.salvar_configuracoes_disco()
+        if hasattr(self.parent_app, "_atualizar_hud_resina"):
+            self.parent_app._atualizar_hud_resina()
+            
         messagebox.showinfo("Sucesso", "Configurações salvas permanentemente!", parent=self)
         self.destroy()
 
@@ -130,24 +132,35 @@ class VectorConvertProApp(tk.Tk):
         self.geometry("1100x750")
         self.configure(bg="#0B0F17")
 
+        # Configurações Padrão
         self.blender_path = r"C:\Program Files\Blender Foundation\Blender 4.2\blender.exe"
         self.output_path = os.path.join(os.getcwd(), "imagens")
+        self.resina_dir = os.path.join(os.getcwd(), "resina_models")
         self.blend_dir = os.getcwd()
         self.selected_blend = ""
         self.svg_selecionado = ""
         self.cycles_samples = 128
 
         self.carregar_configuracoes_disco()
-        
+
+        # Garante que a pasta de modelos exista
+        if not os.path.exists(self.resina_dir):
+            os.makedirs(self.resina_dir)
+
+        # Variáveis de Controle da Interface
         self.render_auto_var = tk.BooleanVar(value=True)
         self.usar_textura_var = tk.BooleanVar(value=True)
+        self.usar_verniz_var = tk.BooleanVar(value=False)
+        self.modelo_resina_selecionado = tk.StringVar(value="Nenhum")
 
+        # Dicionários da UI
         self.sidebar_buttons = {}
         self.screens = {}
 
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(1, weight=1)
 
+        # Layout e Telas
         self._build_navbar()
         self._build_sidebar()
         
@@ -155,7 +168,7 @@ class VectorConvertProApp(tk.Tk):
         self.main_container.grid(row=1, column=1, sticky="nsew", padx=40, pady=20)
         self.main_container.grid_rowconfigure(0, weight=1)
         self.main_container.grid_columnconfigure(0, weight=1)
-        self.usar_verniz_var = tk.BooleanVar(value=False)
+
         self._build_upload_screen()
         self._build_processing_screen()
         self._build_download_screen()
@@ -169,7 +182,7 @@ class VectorConvertProApp(tk.Tk):
                 with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                     dados = json.load(f)
                     self.blender_path = dados.get("blender_path", self.blender_path)
-                    self.output_path = dados.get("output_path", self.output_path)
+                    self.resina_dir = dados.get("resina_dir", self.resina_dir)
                     self.blend_dir = dados.get("blend_dir", self.blend_dir)
                     self.selected_blend = dados.get("selected_blend", self.selected_blend)
                     self.cycles_samples = int(dados.get("cycles_samples", self.cycles_samples))
@@ -179,14 +192,14 @@ class VectorConvertProApp(tk.Tk):
     def salvar_configuracoes_disco(self):
         dados = {
             "blender_path": self.blender_path,
-            "output_path": self.output_path,
+            "resina_dir": self.resina_dir,
             "blend_dir": self.blend_dir,
             "selected_blend": self.selected_blend,
             "cycles_samples": self.cycles_samples
         }
         try:
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-                json.dump(  dados, f, indent=4)
+                json.dump(dados, f, indent=4)
         except Exception as e:
             print(f"Erro ao salvar configurações no disco: {e}")
 
@@ -243,6 +256,24 @@ class VectorConvertProApp(tk.Tk):
             tk.Label(step_item, text=symbol, fg=text_color, bg=circle_color, width=3, height=1, font=("Helvetica", 10, "bold")).pack()
             tk.Label(step_item, text=label, fg=text_color, bg="#0B0F17", font=("Helvetica", 8, "bold")).pack(pady=(5, 0))
 
+    def _atualizar_hud_resina(self):
+        menu = self.menu_resina["menu"]
+        menu.delete(0, "end")
+        
+        arquivos = []
+        if os.path.exists(self.resina_dir):
+            arquivos = [f for f in os.listdir(self.resina_dir) if f.lower().endswith(('.obj', '.fbx', '.stl', '.blend'))]
+            
+        if arquivos:
+            menu.add_command(label="Nenhum (Ignorar Encaixe)", command=lambda: self.modelo_resina_selecionado.set("Nenhum"))
+            for arq in arquivos:
+                menu.add_command(label=arq, command=lambda v=arq: self.modelo_resina_selecionado.set(v))
+            if self.modelo_resina_selecionado.get() not in arquivos:
+                self.modelo_resina_selecionado.set(arquivos[0])
+        else:
+            self.modelo_resina_selecionado.set("Nenhum modelo 3D encontrado")
+            menu.add_command(label="Nenhum modelo 3D encontrado", command=lambda: None)
+
     def _build_upload_screen(self):
         screen = tk.Frame(self.main_container, bg="#0B0F17")
         screen.grid(row=0, column=0, sticky="nsew")
@@ -278,20 +309,30 @@ class VectorConvertProApp(tk.Tk):
         )
         chk_verniz.pack(pady=5)
 
+        # HUD DE MODELOS EM RESINA
+        frame_resina = tk.Frame(card, bg="#121824")
+        frame_resina.pack(fill="x", padx=40, pady=10)
+        
+        tk.Label(frame_resina, text="💎 HUD - Modelo 3D de Resina para Encaixe:", fg="#38BDF8", bg="#121824", font=("Helvetica", 9, "bold")).pack(anchor="w")
+        
+        self.menu_resina = tk.OptionMenu(frame_resina, self.modelo_resina_selecionado, "")
+        self.menu_resina.config(bg="#080C14", fg="#FFFFFF", activebackground="#1E2638", activeforeground="#FFFFFF", bd=1, relief="solid", highlightthickness=0)
+        self.menu_resina.pack(fill="x", pady=2)
+        
+        self._atualizar_hud_resina()
+
     def _selecionar_svg(self):
         file_path = filedialog.askopenfilename(title="Selecionar SVG", filetypes=[("Arquivos SVG", "*.svg"), ("Todos", "*.*")])
         if file_path:
             self.svg_selecionado = file_path
             self.lbl_arquivo_selecionado.configure(text=os.path.basename(file_path), fg="#34D399")
             
-            # --- CRIAÇÃO AUTOMÁTICA DA PASTA "imagens 3d" AO LADO DO SVG ---
+            # Pasta "imagens 3d" criada automaticamente no mesmo diretório do SVG
             diretorio_svg = os.path.dirname(file_path)
             self.output_path = os.path.join(diretorio_svg, "imagens 3d")
             
-            # Garante que a pasta física exista no disco
             if not os.path.exists(self.output_path):
                 os.makedirs(self.output_path)
-            # -------------------------------------------------------------
             
             self.lbl_status_processamento.configure(text="🔄 Iniciando importação e montagem de malhas...")
             for widget in self.frame_historico.winfo_children():
@@ -316,6 +357,11 @@ class VectorConvertProApp(tk.Tk):
         if self.blend_dir and self.selected_blend and not self.selected_blend.startswith("Nenhum"):
             caminho_blend_escolhido = os.path.join(self.blend_dir, self.selected_blend)
 
+        resina_escolhida = self.modelo_resina_selecionado.get()
+        caminho_resina_completo = ""
+        if resina_escolhida and not resina_escolhida.startswith("Nenhum"):
+            caminho_resina_completo = os.path.join(self.resina_dir, resina_escolhida)
+
         comando = [self.blender_path]
 
         if self.render_auto_var.get():
@@ -330,20 +376,18 @@ class VectorConvertProApp(tk.Tk):
             str(self.render_auto_var.get()),
             str(self.usar_textura_var.get()),
             str(self.cycles_samples),
-            str(self.usar_verniz_var.get()) # <--- Novo argumento enviado ao engine
+            str(self.usar_verniz_var.get()),
+            caminho_resina_completo
         ])
 
         try:
             print(f">>> Executando Blender...")
             processo = subprocess.Popen(comando, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='ignore')
             
-            estudio_registrado = False
-            
             for linha in processo.stdout:
                 print(linha, end="")
                 linha_limpa = linha.strip()
                 
-                # Captura e atualiza o status de cada fase anterior ao render
                 if "Carregando estúdio base" in linha_limpa:
                     self.after(0, lambda: self.lbl_status_processamento.configure(text="📂 Abrindo arquivo de estúdio base..."))
                 elif "Analisando e importando" in linha_limpa:
@@ -385,9 +429,8 @@ class VectorConvertProApp(tk.Tk):
         self.atualizar_barra_progresso(porcentagem)
 
     def atualizar_barra_progresso(self, porcentagem):
-        # Obtém a largura atual exata do canvas dinamicamente para preencher 100% de ponta a ponta
         largura_atual = self.canvas_barra.winfo_width()
-        if largura_atual < 10:  # Fallback caso o canvas ainda esteja se dimensionando
+        if largura_atual < 10:
             largura_atual = 440
             
         largura_preenchimento = (porcentagem / 100.0) * largura_atual
@@ -419,14 +462,13 @@ class VectorConvertProApp(tk.Tk):
         self.lbl_status_processamento = tk.Label(card, text="🔄 Iniciando importação e montagem de malhas...", fg="#38BDF8", bg="#121824", font=("Helvetica", 11, "bold"))
         self.lbl_status_processamento.pack(pady=5)
 
-        # --- SEÇÃO DA BARRA DE PROGRESSO DE SAMPLES ---
+        # SEÇÃO DA BARRA DE PROGRESSO DE SAMPLES
         frame_progresso_container = tk.Frame(card, bg="#121824")
         frame_progresso_container.pack(fill="x", padx=40, pady=10)
 
         self.lbl_samples_info = tk.Label(frame_progresso_container, text="Aguardando início do Cycles...", fg="#A0AEC0", bg="#121824", font=("Helvetica", 9, "bold"))
         self.lbl_samples_info.pack(anchor="w", pady=(0, 4))
 
-        # Criação visual da barra com Canvas
         f_bar_bg = tk.Frame(frame_progresso_container, bg="#0B0F17", bd=1, relief="solid")
         f_bar_bg.pack(fill="x", ipady=2)
         
