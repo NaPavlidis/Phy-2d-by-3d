@@ -18,17 +18,18 @@ REGRAS_MATERIAIS = {
     # MDFs (Qualquer variação de MDF)
     '#fefefe': { 'tipo': 'MDF', 'nome_material': 'MDF_3mm', 'extrusao': 0.003, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.15},
     '#e6e7e8': { 'tipo': 'MDF', 'nome_material': 'MDF_6mm', 'extrusao': 0.006, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.15},
-    '#373435': { 'tipo': 'MDF', 'nome_material': 'PLOTTER', 'extrusao': 0.001, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.15},
+    '#373435': { 'tipo': 'PLOTTER', 'nome_material': 'PLOTTER', 'extrusao': 0.0001, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.15},
                 
     # BASES
-    "#f58634": { 'tipo': 'BASE', 'nome_material': 'Base_3MM', 'extrusao': 0.003, 'roughness': 0.3, 'transmission': 0.08, 'ior': 1.05},
-    "#3e4095": { 'tipo': 'BASE', 'nome_material': 'Base_6MM', 'extrusao': 0.01, 'roughness': 0.3, 'transmission': 0.08, 'ior': 1.05},
-    "#f7adaf": { 'tipo': 'BASE', 'nome_material': 'Base_9MM', 'extrusao': 0.015, 'roughness': 0.3, 'transmission': 0.08, 'ior': 1.05 },
-    "#84716b": { 'tipo': 'BASE', 'nome_material': 'Base_12MM', 'extrusao': 0.02, 'roughness': 0.3, 'transmission': 0.08, 'ior': 1.05},
+    "#f58634": { 'tipo': 'BASE', 'nome_material': 'Base_3MM', 'extrusao': 0.003, 'roughness': 0.2, 'transmission': 0.08, 'ior': 1.15},
+    "#3e4095": { 'tipo': 'BASE', 'nome_material': 'Base_6MM', 'extrusao': 0.01, 'roughness': 0.2, 'transmission': 0.08, 'ior': 1.15},
+    "#f7adaf": { 'tipo': 'BASE', 'nome_material': 'Base_9MM', 'extrusao': 0.015, 'roughness': 0.2, 'transmission': 0.08, 'ior': 1.15},
+    "#84716b": { 'tipo': 'BASE', 'nome_material': 'Base_12MM', 'extrusao': 0.02, 'roughness': 0.2, 'transmission': 0.08, 'ior': 1.15},
     
     # ADESIVOS
-    '#ec268f': { 'tipo': 'ADESIVO', 'nome_material': 'Adesivo_Padrao', 'extrusao': 0.0001, 'roughness': 0.002, 'transmission': 0.2, 'ior': 1.2 }
+    '#ec268f': { 'tipo': 'ADESIVO', 'nome_material': 'Adesivo_Padrao', 'extrusao': 0.0001, 'roughness': 0.0, 'transmission': 0.2, 'ior': 1.2 }
 }
+
 
 def hex_para_rgba(hex_color, alpha=1.0):
     if not hex_color or not hex_color.startswith('#'): return (1.0, 1.0, 1.0, alpha)
@@ -62,7 +63,7 @@ def criar_uv_perfeito(obj):
         v_uv = (v.co.y - min_y) / altura
         uv_layer[loop.index].uv = (u, v_uv)
 
-def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="", renderizar=True, usar_textura=True, cycles_samples=128):
+def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="", renderizar=True, usar_textura=True, cycles_samples=128, usar_verniz=False):
     # 1. Carrega o estúdio base se fornecido
     if caminho_blend and os.path.exists(caminho_blend):
         print(f">>> Carregando estúdio base: {caminho_blend}", flush=True)
@@ -371,9 +372,15 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         else:
             if preenchimento_val != 'Nenhum':
                 bsdf.inputs[pino_cor].default_value = cor_svg
+        
+        roughness_final = regra['roughness']
+        # Se for MDF e o verniz estiver ativado, reduz a rugosidade para 0.03 (efeito brilhante/envernizado)
+        if usar_verniz and tipo_material == 'MDF':
+            roughness_final = 0.03
 
         if 'Roughness' in bsdf.inputs: 
-            bsdf.inputs['Roughness'].default_value = regra['roughness']
+            bsdf.inputs['Roughness'].default_value = roughness_final
+
         if tipo_material != 'ACRILICO':
             if 'Transmission Weight' in bsdf.inputs: 
                 bsdf.inputs['Transmission Weight'].default_value = regra.get('transmission', 0.0)
@@ -403,17 +410,42 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
     print("Torféu montado com sucesso!!", flush=True)
 
     pecas_corpo = []
+    status_rotacao = {}
+
     for item in elementos_mapeados:
         obj = item['obj']
         t_mat = item['tipo_material']
+        nome_obj = obj.name
         try:
-            if obj.name in bpy.data.objects:
+            if nome_obj in bpy.data.objects:
                 deve_rotacionar = True 
+                
+                abaixo = suporte_dos_objetos.get(nome_obj)
+                
+                # Verifica se o objeto imediatamente abaixo é uma base ou está apoiado nela
+                apoiado_direto_na_base = False
+                if abaixo:
+                    item_abaixo = next((i for i in elementos_mapeados if i['obj'].name == abaixo), None)
+                    if item_abaixo and item_abaixo['tipo_material'] in ['BASE', 'BASE_FINA']:
+                        apoiado_direto_na_base = True
+
                 if t_mat in ['BASE', 'BASE_FINA']: 
                     deve_rotacionar = False  
-                elif t_mat == 'ADESIVO' and esta_apoiado_na_base(obj.name): 
-                    deve_rotacionar = False 
-                
+                elif t_mat in ['ACRILICO', 'ADESIVO', 'PLOTTER']:
+                    # Se estiver colado na base (ou o suporte abaixo não rotaciona), ele também fica travado em pé
+                    if apoiado_direto_na_base or esta_apoiado_na_base(nome_obj):
+                        deve_rotacionar = False
+                    elif abaixo and abaixo in status_rotacao and not status_rotacao[abaixo]:
+                        deve_rotacionar = False
+                    else:
+                        deve_rotacionar = True
+                else:
+                    # Regra padrão para MDFs e demais peças do corpo
+                    if abaixo and abaixo in status_rotacao and not status_rotacao[abaixo]:
+                        deve_rotacionar = True
+
+                status_rotacao[nome_obj] = deve_rotacionar
+
                 if deve_rotacionar: 
                     pecas_corpo.append(obj)
         except ReferenceError: pass
@@ -513,11 +545,10 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         bpy.context.scene.camera = cam_principal
 
     if renderizar and pasta_saida_renders:
-        nome_trofeu = os.path.splitext(os.path.basename(caminho_svg))[0]
-        pasta_dest = os.path.join(pasta_saida_renders, nome_trofeu)
-        if os.path.exists(pasta_dest):
-            shutil.rmtree(pasta_dest)
-        os.makedirs(pasta_dest)
+        # Usa diretamente a pasta de saída fornecida (imagens 3d) sem criar subpasta com o nome do troféu
+        pasta_dest = pasta_saida_renders
+        if not os.path.exists(pasta_dest):
+            os.makedirs(pasta_dest)
         
         scene = bpy.context.scene
         scene.render.engine = 'CYCLES'
@@ -573,6 +604,7 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
     else:
         print(">>> Modo interativo ativo: O Blender permaneceu aberto com o troféu montado.", flush=True)
 
+        
 if __name__ == "__main__":
     if "--" in sys.argv:
         argv = sys.argv[sys.argv.index("--") + 1:]
@@ -594,4 +626,8 @@ if __name__ == "__main__":
                 cycles_samples = int(argv[5])
             except:
                 cycles_samples = 128
-        processar_svg_no_blender(caminho_svg, pasta_saida, caminho_blend, renderizar_automaticamente, usar_textura, cycles_samples)
+        usar_verniz = False
+        if len(argv) > 6:
+            usar_verniz = argv[6].lower() == 'true'
+            
+        processar_svg_no_blender(caminho_svg, pasta_saida, caminho_blend, renderizar_automaticamente, usar_textura, cycles_samples, usar_verniz)
