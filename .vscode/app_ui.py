@@ -7,6 +7,7 @@ from tkinter import filedialog, messagebox
 
 CONFIG_FILE = "config.json"
 
+
 class SettingsWindow(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
@@ -23,7 +24,7 @@ class SettingsWindow(tk.Toplevel):
         self.blend_dir_var = tk.StringVar(value=parent.blend_dir)
         self.selected_blend_var = tk.StringVar(value=parent.selected_blend)
         self.cycles_samples_var = tk.StringVar(value=str(parent.cycles_samples))
-
+        self.usar_verniz_var = tk.BooleanVar(value=False)
         self._build_ui()
 
     def _build_ui(self):
@@ -154,7 +155,7 @@ class VectorConvertProApp(tk.Tk):
         self.main_container.grid(row=1, column=1, sticky="nsew", padx=40, pady=20)
         self.main_container.grid_rowconfigure(0, weight=1)
         self.main_container.grid_columnconfigure(0, weight=1)
-
+        self.usar_verniz_var = tk.BooleanVar(value=False)
         self._build_upload_screen()
         self._build_processing_screen()
         self._build_download_screen()
@@ -271,16 +272,28 @@ class VectorConvertProApp(tk.Tk):
         )
         chk_textura.pack(pady=5)
 
+        chk_verniz = tk.Checkbutton(
+            card, text="Aplicar Verniz (Reduz roughness da madeira para 0.03)", variable=self.usar_verniz_var, 
+            fg="#A0AEC0", bg="#121824", selectcolor="#080C14", activebackground="#121824", activeforeground="#FFFFFF", font=("Helvetica", 9)
+        )
+        chk_verniz.pack(pady=5)
+
     def _selecionar_svg(self):
         file_path = filedialog.askopenfilename(title="Selecionar SVG", filetypes=[("Arquivos SVG", "*.svg"), ("Todos", "*.*")])
         if file_path:
             self.svg_selecionado = file_path
             self.lbl_arquivo_selecionado.configure(text=os.path.basename(file_path), fg="#34D399")
             
-            self.lbl_status_processamento.configure(text="🔄 Iniciando importação e montagem de malhas...")
-            self.lbl_samples_info.configure(text=f"Meta de Samples: {self.cycles_samples} (Aguardando renderização...)")
-            self.atualizar_barra_progresso(0)
+            # --- CRIAÇÃO AUTOMÁTICA DA PASTA "imagens 3d" AO LADO DO SVG ---
+            diretorio_svg = os.path.dirname(file_path)
+            self.output_path = os.path.join(diretorio_svg, "imagens 3d")
             
+            # Garante que a pasta física exista no disco
+            if not os.path.exists(self.output_path):
+                os.makedirs(self.output_path)
+            # -------------------------------------------------------------
+            
+            self.lbl_status_processamento.configure(text="🔄 Iniciando importação e montagem de malhas...")
             for widget in self.frame_historico.winfo_children():
                 widget.destroy()
                 
@@ -316,7 +329,8 @@ class VectorConvertProApp(tk.Tk):
             caminho_blend_escolhido,
             str(self.render_auto_var.get()),
             str(self.usar_textura_var.get()),
-            str(self.cycles_samples)
+            str(self.cycles_samples),
+            str(self.usar_verniz_var.get()) # <--- Novo argumento enviado ao engine
         ])
 
         try:
