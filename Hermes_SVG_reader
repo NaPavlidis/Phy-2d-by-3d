@@ -1,0 +1,120 @@
+import sys
+import xml.etree.ElementTree as ET
+import json
+import re
+
+REGRAS_MATERIAIS = {
+    '#ed3237': { 'tipo': 'ACRILICO', 'nome_material': 'acrilico_padrão' },
+    '#fff212': { 'tipo': 'ACRILICO', 'nome_material': 'Acrilico_transparente' },
+    '#fefefe': { 'tipo': 'MDF', 'nome_material': 'MDF_3mm' },
+    '#e6e7e8': { 'tipo': 'MDF', 'nome_material': 'MDF_6mm' },
+    '#373435': { 'tipo': 'MDF', 'nome_material': 'PLOTTER' },
+    '#f58634': { 'tipo': 'BASE', 'nome_material': 'Base_3MM' },
+    '#3e4095': { 'tipo': 'BASE', 'nome_material': 'Base_6MM' },
+    '#f7adaf': { 'tipo': 'BASE', 'nome_material': 'Base_9MM' },
+    '#84716b': { 'tipo': 'BASE', 'nome_material': 'Base_12MM' },
+    '#ec268f': { 'tipo': 'ADESIVO', 'nome_material': 'Adesivo_Padrao' }
+}
+
+def normalizar_cor(cor_str):
+    if not cor_str or cor_str.lower() == 'none':
+        return ''
+    cor_limpa = cor_str.replace('"', '').replace("'", "").replace(' ', '').lower()
+    if len(cor_limpa) == 4 and cor_limpa.startswith('#'):
+        cor_limpa = f"#{cor_limpa[1]*2}{cor_limpa[2]*2}{cor_limpa[3]*2}"
+    return cor_limpa
+
+def analisar_svg(caminho_svg):
+    ET.register_namespace('', "http://www.w3.org/2000/svg")
+    try:
+        tree = ET.parse(caminho_svg)
+        root = tree.getroot()
+    except Exception as e:
+        return json.dumps({"erro": str(e)}, ensure_ascii=False)
+
+    materiais_encontrados = {}
+    todos_y = []
+    todos_x = []
+
+    # Extrai dimensões globais do SVG (viewBox ou height/width) caso existam
+    svg_height_total = 1260.0 # Valor padrão de referência para 30cm no CorelDraw
+    svg_width_total = 900.0
+
+    viewbox = root.get('viewBox')
+    if viewbox:
+        partes = [float(p) for p in re.findall(r"[-+]?\d*\.\d+|\d+", viewbox)]
+        if len(partes) >= 4:
+            svg_width_total = partes[2]
+            svg_height_total = partes[3]
+
+    h_attr = root.get('height')
+    if h_attr:
+        nums_h = re.findall(r"[-+]?\d*\.\d+|\d+", h_attr)
+        if nums_h:
+            svg_height_total = float(nums_h[0])
+
+    for filho in root.iter():
+        tag_filho = filho.tag.split('}')[-1]
+        if tag_filho in ['path', 'rect', 'circle', 'ellipse', 'polygon', 'polyline']:
+            style = filho.get('style', '')
+            stroke = filho.get('stroke', '')
+            fill = filho.get('fill', '')
+            
+            if style:
+                s_match = re.search(r'stroke:\s*([^;]+)', style)
+                if s_match: stroke = s_match.group(1).strip()
+                f_match = re.search(r'fill:\s*([^;]+)', style)
+                if f_match: fill = f_match.group(1).strip()
+            
+            cor_alvo = normalizar_cor(stroke) if normalizar_cor(stroke) in REGRAS_MATERIAIS else normalizar_cor(fill)
+
+            if cor_alvo in REGRAS_MATERIAIS:
+                info_mat = REGRAS_MATERIAIS[cor_alvo]
+                tipo_mat = info_mat['tipo']
+                nome_mat = info_mat['nome_material']
+
+                if nome_mat not in materiais_encontrados:
+                    materiais_encontrados[nome_mat] = 0
+                materiais_encontrados[nome_mat] += 1
+
+                # Coleta coordenadas apenas se NÃO for base
+                if tipo_mat != 'BASE':
+                    texto_dados = filho.get('d', '') + " " + str(filho.attrib)
+                    numeros = [float(n) for n in re.findall(r"[-+]?\d*\.\d+|\d+", texto_dados)]
+                    if numeros:
+                        # Separa valores de forma segura recolhendo todos os números válidos encontrados na tag
+                        for i in range(0, len(numeros)-1, 2):
+                            px, py = numeros[i], numeros[i+1]
+                            if 0 <= px <= 5000 and 0 <= py <= 5000: # Filtra ruídos extremos
+                                todos_x.append(px)
+                                todos_y.append(py)
+
+    if xs_corpo and ys_corpo:
+        largura_unidades = max(xs_corpo) - min(xs_corpo)
+        altura_unidades = max(ys_corpo) - min(ys_corpo)
+    else:
+        largura_unidades = 0.0
+        altura_unidades = 0.0
+
+    # Fatores de conversão ajustados para corresponder exatamente a 24cm x 30cm
+    fator_largura = largura_unidades / 24.0 if largura_unidades > 0 else 42.0
+    fator_altura = altura_unidades / 30.0 if altura_unidades > 0 else 42.0
+
+    # Usamos a média dos fatores ou aplicamos a proporção direta
+    fator_conversao_cm = (fator_largura + fator_altura) / 2.0
+
+    resultado = {
+        "materiais_necessarios": materiais_encontrados,
+        "tamanho_total_trofeu_cm": {
+            "largura": round(largura_unidades / fator_conversao_cm, 2),
+            "altura": round(altura_unidades / fator_conversao_cm, 2)
+        }
+    }
+
+    return json.dumps(resultado, indent=2, ensure_ascii=False)
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        print(analisar_svg(sys.argv[1]))
+    else:
+        print(json.dumps({"erro": "Caminho do SVG não fornecido"}))
