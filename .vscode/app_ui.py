@@ -75,6 +75,8 @@ class SettingsWindow(tk.Toplevel):
 
         tk.Button(self, text="Salvar Configurações", bg="#38BDF8", fg="#FFFFFF", bd=0, font=("Helvetica", 10, "bold"), pady=8, command=self._save_settings).pack(fill="x", padx=20, pady=(15, 0))
 
+    
+
     def _select_blender(self):
         f = filedialog.askopenfilename(title="Selecione o executável do Blender", filetypes=[("Executável Blender", "blender.exe"), ("Todos", "*.*")])
         if f: self.blender_path_var.set(f)
