@@ -2,7 +2,7 @@ import bpy
 import xml.etree.ElementTree as ET
 import re
 import os
-import mathutils  # type: ignore[import-not-found]
+import mathutils 
 import math 
 import sys
 import shutil
@@ -442,19 +442,25 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
 
                 novos_objs = list(set(bpy.context.scene.objects) - objs_antes_import)
                 if novos_objs:
-                    # Filtra apenas objetos do tipo MESH (ignora luzes/câmeras que possam ter vindo no FBX)
                     malhas_resina = [o for o in novos_objs if o.type == 'MESH']
                     if malhas_resina:
                         resina_3d_obj = malhas_resina[0]
                         resina_3d_obj.location = ponto_encaixe_3d
                         
-                        # Se a área de marcação do SVG foi classificada para rotacionar, o objeto 3D importado rotaciona junto
+                        # Atualiza a referência em elementos_mapeados para o novo objeto 3D
+                        item['obj'] = resina_3d_obj
+                        
                         if obj_marcado_svg in pecas_corpo:
                             pecas_corpo.append(resina_3d_obj)
-                            if obj_marcado_svg in pecas_corpo:
-                                pecas_corpo.remove(obj_marcado_svg)
+                            pecas_corpo.remove(obj_marcado_svg)
                         
                         objetos_importados.append(resina_3d_obj)
+            
+            # Remove o objeto guia 2D
+            try:
+                bpy.data.objects.remove(obj_marcado_svg, do_unlink=True)
+            except Exception:
+                pass
             
             # 3. Remove a malha plana guia do SVG
             bpy.data.objects.remove(obj_marcado_svg, do_unlink=True)
@@ -467,10 +473,16 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         while atual and atual not in visitados:
             visitados.add(atual)
             for item in elementos_mapeados:
-                if item['obj'].name == atual:
-                    t_mat = item['tipo_material']
-                    if t_mat in ['BASE', 'BASE_FINA']: return True 
-                    elif t_mat in ['MDF']: return False  # MDF interrompe o rastreio, mas RESINA_AREA, ACRILICO e ADESIVO continuam subindo na árvore
+                # Checa se o objeto ainda existe na memória do Blender antes de acessar
+                try:
+                    if item['obj'] and item['obj'].name == atual:
+                        t_mat = item['tipo_material']
+                        if t_mat in ['BASE', 'BASE_FINA']: 
+                            return True 
+                        elif t_mat in ['MDF']: 
+                            return False  # MDF interrompe o rastreio
+                except (ReferenceError, AttributeError):
+                    continue
             atual = suporte_dos_objetos.get(atual)
         return False
 
@@ -480,42 +492,47 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
     status_rotacao = {}
 
     for item in elementos_mapeados:
-        obj = item['obj']
-        t_mat = item['tipo_material']
-        nome_obj = obj.name
         try:
-            if nome_obj in bpy.data.objects:
-                deve_rotacionar = True 
-                
-                abaixo = suporte_dos_objetos.get(nome_obj)
-                
-                # Verifica se o suporte imediatamente abaixo é uma base
-                apoiado_direto_na_base = False
-                if abaixo:
-                    item_abaixo = next((i for i in elementos_mapeados if i['obj'].name == abaixo), None)
-                    if item_abaixo and item_abaixo['tipo_material'] in ['BASE', 'BASE_FINA']:
-                        apoiado_direto_na_base = True
+            obj = item['obj']
+            # Se o objeto foi removido e não substituído, pula
+            if not obj or obj.name not in bpy.data.objects:
+                continue
 
-                if t_mat in ['BASE', 'BASE_FINA']: 
-                    deve_rotacionar = False  # Base principal nunca rotaciona
-                elif t_mat in ['ACRILICO', 'ADESIVO', 'RESINA_AREA']:
-                    # Se a resina/acrílico/adesivo estiver apoiado na base (ou seu suporte estiver travado), ele NÃO rotaciona
-                    if apoiado_direto_na_base or esta_apoiado_na_base(nome_obj):
-                        deve_rotacionar = False
-                    elif abaixo and abaixo in status_rotacao and not status_rotacao[abaixo]:
-                        deve_rotacionar = False
-                    else:
-                        deve_rotacionar = True
+            t_mat = item['tipo_material']
+            nome_obj = obj.name
+            deve_rotacionar = True 
+            
+            abaixo = suporte_dos_objetos.get(nome_obj)
+            
+            apoiado_direto_na_base = False
+            if abaixo:
+                for i in elementos_mapeados:
+                    try:
+                        if i['obj'] and i['obj'].name == abaixo and i['tipo_material'] in ['BASE', 'BASE_FINA']:
+                            apoiado_direto_na_base = True
+                            break
+                    except ReferenceError:
+                        continue
+
+            if t_mat in ['BASE', 'BASE_FINA']: 
+                deve_rotacionar = False  
+            elif t_mat in ['ACRILICO', 'ADESIVO', 'RESINA_AREA']:
+                if apoiado_direto_na_base or esta_apoiado_na_base(nome_obj):
+                    deve_rotacionar = False
+                elif abaixo and abaixo in status_rotacao and not status_rotacao[abaixo]:
+                    deve_rotacionar = False
                 else:
-                    # MDF e demais peças flutuantes do corpo
-                    if abaixo and abaixo in status_rotacao and not status_rotacao[abaixo]:
-                        deve_rotacionar = True
+                    deve_rotacionar = True
+            else:
+                if abaixo and abaixo in status_rotacao and not status_rotacao[abaixo]:
+                    deve_rotacionar = True
 
-                status_rotacao[nome_obj] = deve_rotacionar
+            status_rotacao[nome_obj] = deve_rotacionar
 
-                if deve_rotacionar: 
-                    pecas_corpo.append(obj)
-        except ReferenceError: passs
+            if deve_rotacionar: 
+                pecas_corpo.append(obj)
+        except (ReferenceError, AttributeError):
+            pass  # Corrigido de 'passs' para 'pass'
 
     if pecas_corpo:
         bpy.context.view_layer.update() 
