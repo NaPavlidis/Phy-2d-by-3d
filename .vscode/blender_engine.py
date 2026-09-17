@@ -2,7 +2,7 @@ import bpy
 import xml.etree.ElementTree as ET
 import re
 import os
-import mathutils 
+import mathutils  # type: ignore[import-not-found]
 import math 
 import sys
 import shutil
@@ -397,47 +397,66 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         bpy.context.view_layer.update()
 
     # --- INSTANCIAÇÃO AUTOMÁTICA DE PEÇAS DE RESINA 3D ---
+    # --- INSTANCIAÇÃO AUTOMÁTICA E SUPORTE DE RESINA 3D ---
     for item in elementos_mapeados:
         if item['tipo_material'] == 'RESINA_AREA':
             obj_marcado_svg = item['obj']
             
-            # 1. Calcula o centro exato da área de marcação do SVG
+            # 1. Calcula as coordenadas do centro da marcação no SVG
             min_x, max_x, min_y, max_y = obter_caixa_de_colisao(obj_marcado_svg)
             centro_x = (min_x + max_x) / 2.0
             centro_y = (min_y + max_y) / 2.0
-            centro_z = obj_marcado_svg.location.z # Pega a altura Z onde a marcação ficou posicionada
+            centro_z = obj_marcado_svg.location.z
             
             ponto_encaixe_3d = mathutils.Vector((centro_x, centro_y, centro_z))
             
-            # 2. Se houver um arquivo 3D fornecido, importa e posiciona
+            # 2. Importa o modelo 3D pré-fabricado
+            # 2. Importa o modelo 3D pré-fabricado com tratamento de segurança
             if caminho_modelo_resina and os.path.exists(caminho_modelo_resina):
                 extensao = os.path.splitext(caminho_modelo_resina)[1].lower()
                 objs_antes_import = set(bpy.context.scene.objects)
                 
-                # Suporte aos formatos de modelos 3D mais comuns
-                if extensao in ['.obj', '.wavefront']:
-                    bpy.ops.wm.obj_import(filepath=caminho_modelo_resina)
-                elif extensao == '.fbx':
-                    bpy.ops.import_scene.fbx(filepath=caminho_modelo_resina)
-                elif extensao == '.stl':
-                    bpy.ops.wm.stl_import(filepath=caminho_modelo_resina)
-                elif extensao == '.blend':
-                    with bpy.data.libraries.load(caminho_modelo_resina, link=False) as (data_from, data_to):
-                        data_to.objects = data_from.objects
-                    for obj_carregado in data_to.objects:
-                        if obj_carregado is not None:
-                            bpy.context.scene.collection.objects.link(obj_carregado)
-                
+                try:
+                    if extensao in ['.obj', '.wavefront']:
+                        bpy.ops.wm.obj_import(filepath=caminho_modelo_resina)
+                    elif extensao == '.fbx':
+                        # Importação segura de FBX para Blender 5.x: Ignora luzes e câmeras quebradas no arquivo
+                        try:
+                            bpy.ops.import_scene.fbx(
+                                filepath=caminho_modelo_resina,
+                                use_custom_props=False,
+                                ignore_leaf_bones=True
+                            )
+                        except Exception as err_fbx:
+                            print(f"⚠️ AVISO: O importador nativo de FBX gerou um aviso (luzes/câmeras ignoradas): {err_fbx}", flush=True)
+                    elif extensao == '.stl':
+                        bpy.ops.wm.stl_import(filepath=caminho_modelo_resina)
+                    elif extensao == '.blend':
+                        with bpy.data.libraries.load(caminho_modelo_resina, link=False) as (data_from, data_to):
+                            data_to.objects = data_from.objects
+                        for obj_carregado in data_to.objects:
+                            if obj_carregado is not None:
+                                bpy.context.scene.collection.objects.link(obj_carregado)
+                except Exception as e_import:
+                    print(f"❌ Erro ao importar arquivo 3D de resina: {e_import}", flush=True)
+
                 novos_objs = list(set(bpy.context.scene.objects) - objs_antes_import)
                 if novos_objs:
-                    resina_3d_obj = novos_objs[0]
-                    # Posiciona no centro da marcação do SVG
-                    resina_3d_obj.location = ponto_encaixe_3d
-                    
-                    # Adiciona à lista de objetos para enquadramento da câmera se necessário
-                    objetos_importados.append(resina_3d_obj)
+                    # Filtra apenas objetos do tipo MESH (ignora luzes/câmeras que possam ter vindo no FBX)
+                    malhas_resina = [o for o in novos_objs if o.type == 'MESH']
+                    if malhas_resina:
+                        resina_3d_obj = malhas_resina[0]
+                        resina_3d_obj.location = ponto_encaixe_3d
+                        
+                        # Se a área de marcação do SVG foi classificada para rotacionar, o objeto 3D importado rotaciona junto
+                        if obj_marcado_svg in pecas_corpo:
+                            pecas_corpo.append(resina_3d_obj)
+                            if obj_marcado_svg in pecas_corpo:
+                                pecas_corpo.remove(obj_marcado_svg)
+                        
+                        objetos_importados.append(resina_3d_obj)
             
-            # 3. Remove/Oculta a malha 2D guia que veio do SVG para não aparecer no render
+            # 3. Remove a malha plana guia do SVG
             bpy.data.objects.remove(obj_marcado_svg, do_unlink=True)
         
     if os.path.exists(caminho_temp): os.remove(caminho_temp)
@@ -451,7 +470,7 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
                 if item['obj'].name == atual:
                     t_mat = item['tipo_material']
                     if t_mat in ['BASE', 'BASE_FINA']: return True 
-                    elif t_mat in ['MDF', 'ACRILICO']: return False 
+                    elif t_mat in ['MDF']: return False  # MDF interrompe o rastreio, mas RESINA_AREA, ACRILICO e ADESIVO continuam subindo na árvore
             atual = suporte_dos_objetos.get(atual)
         return False
 
@@ -470,7 +489,7 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
                 
                 abaixo = suporte_dos_objetos.get(nome_obj)
                 
-                # Verifica se o objeto imediatamente abaixo é uma base ou está apoiado nela
+                # Verifica se o suporte imediatamente abaixo é uma base
                 apoiado_direto_na_base = False
                 if abaixo:
                     item_abaixo = next((i for i in elementos_mapeados if i['obj'].name == abaixo), None)
@@ -478,9 +497,9 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
                         apoiado_direto_na_base = True
 
                 if t_mat in ['BASE', 'BASE_FINA']: 
-                    deve_rotacionar = False  
-                elif t_mat in ['ACRILICO', 'ADESIVO', 'PLOTTER']:
-                    # Se estiver colado na base (ou o suporte abaixo não rotaciona), ele também fica travado em pé
+                    deve_rotacionar = False  # Base principal nunca rotaciona
+                elif t_mat in ['ACRILICO', 'ADESIVO', 'RESINA_AREA']:
+                    # Se a resina/acrílico/adesivo estiver apoiado na base (ou seu suporte estiver travado), ele NÃO rotaciona
                     if apoiado_direto_na_base or esta_apoiado_na_base(nome_obj):
                         deve_rotacionar = False
                     elif abaixo and abaixo in status_rotacao and not status_rotacao[abaixo]:
@@ -488,7 +507,7 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
                     else:
                         deve_rotacionar = True
                 else:
-                    # Regra padrão para MDFs e demais peças do corpo
+                    # MDF e demais peças flutuantes do corpo
                     if abaixo and abaixo in status_rotacao and not status_rotacao[abaixo]:
                         deve_rotacionar = True
 
@@ -496,7 +515,7 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
 
                 if deve_rotacionar: 
                     pecas_corpo.append(obj)
-        except ReferenceError: pass
+        except ReferenceError: passs
 
     if pecas_corpo:
         bpy.context.view_layer.update() 
