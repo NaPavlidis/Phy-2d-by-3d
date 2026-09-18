@@ -20,8 +20,11 @@ REGRAS_MATERIAIS = {
     '#d2d3d5': { 'tipo': 'MDF', 'nome_material': 'MDF_9mm', 'extrusao': 0.009, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.15},
     '#373435': { 'tipo': 'PLOTTER', 'nome_material': 'PLOTTER', 'extrusao': 0.0001, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.15},
 
-   # RESINA (Área guia sem extrusão com IOR e Transmissão configurados)
-    '#00a859': { 'tipo': 'RESINA_AREA', 'nome_material': 'Area_Resina', 'extrusao': 0.0, 'roughness': 0.05, 'transmission': 0.2, 'ior': 1 },
+    # NOVO MATERIAL: MDF colocado nas costas do troféu (permanece plano/deitado)
+    '#00afef': { 'tipo': 'MDF_COSTAS', 'nome_material': 'MDF_Costas_3mm', 'extrusao': 0.003, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.15 },
+
+    # RESINA (Área guia sem extrusão)
+    '#00a859': { 'tipo': 'RESINA_AREA', 'nome_material': 'Area_Resina', 'extrusao': 0.0, 'roughness': 0.05, 'transmission': 0.9, 'ior': 1.45 },
 
     # BASES
     "#f58634": { 'tipo': 'BASE', 'nome_material': 'Base_3MM', 'extrusao': 0.003, 'roughness': 0.2, 'transmission': 0.08, 'ior': 1.15},
@@ -30,7 +33,7 @@ REGRAS_MATERIAIS = {
     "#84716b": { 'tipo': 'BASE', 'nome_material': 'Base_12MM', 'extrusao': 0.02, 'roughness': 0.2, 'transmission': 0.08, 'ior': 1.15},
     
     # ADESIVOS
-    '#ec268f': { 'tipo': 'ADESIVO', 'nome_material': 'Adesivo_Padrao', 'extrusao': 0.0001, 'roughness': 0.05, 'transmission': 0.6, 'ior': 1.2 }
+    '#ec268f': { 'tipo': 'ADESIVO', 'nome_material': 'Adesivo_Padrao', 'extrusao': 0.0001, 'roughness': 0.0, 'transmission': 0.2, 'ior': 1.2 }
 }
 
 
@@ -38,7 +41,7 @@ def hex_para_rgba(hex_color, alpha=1.0):
     if not hex_color or not hex_color.startswith('#'): return (1.0, 1.0, 1.0, alpha)
     hex_color = hex_color.lstrip('#').lower()
     r, g, b = int(hex_color[0:2], 16)/255.0, int(hex_color[2:4], 16)/255.0, int(hex_color[4:6], 16)/255.0
-    fator_cmyk = 0.45
+    fator_cmyk = 0.50 
     r, g, b = r * fator_cmyk, g * fator_cmyk, b * fator_cmyk
     def srgb_para_linear(c): return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
     return (srgb_para_linear(r), srgb_para_linear(g), srgb_para_linear(b), alpha)
@@ -67,30 +70,25 @@ def criar_uv_perfeito(obj):
         uv_layer[loop.index].uv = (u, v_uv)
 
 def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="", renderizar=True, usar_textura=True, cycles_samples=128, usar_verniz=False, caminho_modelo_resina=""):
-
     # 1. Carrega o estúdio base se fornecido
     if caminho_blend and os.path.exists(caminho_blend):
         print(f">>> Carregando estúdio base: {caminho_blend}", flush=True)
         bpy.ops.wm.open_mainfile(filepath=caminho_blend)
         
-        # --- CORREÇÃO E ATUALIZAÇÃO COMPLETA DA ÁRVORE DE NÓS DO WORLD ---
+        # --- CORREÇÃO E ATUALIZAÇÃO DO HDRI DO WORLD ---
         if bpy.context.scene.world and bpy.context.scene.world.use_nodes:
             world_node_tree = bpy.context.scene.world.node_tree
             nodes = world_node_tree.nodes
             
-            # A. Corrige a conexão de 'Normal' para 'Generated' no Texture Coordinate
             tex_coord = next((n for n in nodes if n.type == 'TEX_COORD'), None)
             mapping = next((n for n in nodes if n.type == 'MAPPING'), None)
             
             if tex_coord and mapping:
-                # Remove conexões antigas do pino de entrada Vector do Mapping
                 for link in list(world_node_tree.links):
                     if link.to_node == mapping and link.to_socket.name == 'Vector':
                         world_node_tree.links.remove(link)
-                # Conecta Normal -> Vector
                 world_node_tree.links.new(tex_coord.outputs['Generated'], mapping.inputs['Vector'])
 
-            # B. Notifica alterações em todos os tipos de nós usados na sua estrutura
             tipos_nos_world = ['TEX_ENVIRONMENT', 'MAPPING', 'TEX_COORD', 'EMISSION', 'MIX_SHADER', 'LIGHT_PATH', 'RGB']
             for node in nodes:
                 if node.type in tipos_nos_world:
@@ -101,7 +99,6 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
                             except Exception:
                                 pass
             
-            # C. Força a atualização de rotação no nó Mapping para recalcular o HDRI no Blender
             if mapping:
                 mapping.inputs['Rotation'].default_value[2] += 0.0001
                 mapping.inputs['Rotation'].default_value[2] -= 0.0001
@@ -237,8 +234,6 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
 
     objetos_importados = malhas_convertidas
     bpy.context.view_layer.update()
-    
-    pasta_script_atual = os.path.dirname(os.path.abspath(__file__))
 
     def obter_id_numerico(obj):
         match = re.search(r'trofeu_shape_(\d+)', obj.name)
@@ -268,7 +263,8 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
             'regra': regra,
             'tipo_material': tipo_material,
             'indice_svg': num_id if num_id != 9999 else idx,
-            'eh_base': eh_base
+            'eh_base': eh_base,
+            'z_original_svg': obj.location.z # Salva a posição Z original importada do SVG
         })
 
     elementos_mapeados.sort(key=lambda x: (0 if x['eh_base'] else 1, x['indice_svg']))
@@ -285,39 +281,41 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         regra = item['regra']
         tipo_material = item['tipo_material']
 
-        min_x, max_x, min_y, max_y = obter_caixa_de_colisao(obj)
-        pontos_de_teste = []
-        matriz, matriz_inv = obj.matrix_world, obj.matrix_world.inverted()
-        
-        for v in obj.data.vertices:
-            pontos_de_teste.append(( (matriz @ v.co).x, (matriz @ v.co).y ))
+        # IGNORA O EMPILHAMENTO RAYCAST PARA O MDF_COSTAS
+        if tipo_material != 'MDF_COSTAS':
+            min_x, max_x, min_y, max_y = obter_caixa_de_colisao(obj)
+            pontos_de_teste = []
+            matriz, matriz_inv = obj.matrix_world, obj.matrix_world.inverted()
             
-        passo_x = (max_x - min_x)/10.0 if max_x > min_x else 0.001
-        passo_y = (max_y - min_y)/10.0 if max_y > min_y else 0.001
-        
-        for i in range(11):
-            for j in range(11):
-                px, py = min_x + (i*passo_x), min_y + (j*passo_y)
-                or_loc = matriz_inv @ mathutils.Vector((px, py, 1.0))
-                tg_loc = matriz_inv @ mathutils.Vector((px, py, 0.0))
-                if obj.ray_cast(or_loc, (tg_loc - or_loc).normalized())[0]:
-                    pontos_de_teste.append((px, py))
+            for v in obj.data.vertices:
+                pontos_de_teste.append(( (matriz @ v.co).x, (matriz @ v.co).y ))
+                
+            passo_x = (max_x - min_x)/10.0 if max_x > min_x else 0.001
+            passo_y = (max_y - min_y)/10.0 if max_y > min_y else 0.001
+            
+            for i in range(11):
+                for j in range(11):
+                    px, py = min_x + (i*passo_x), min_y + (j*passo_y)
+                    or_loc = matriz_inv @ mathutils.Vector((px, py, 1.0))
+                    tg_loc = matriz_inv @ mathutils.Vector((px, py, 0.0))
+                    if obj.ray_cast(or_loc, (tg_loc - or_loc).normalized())[0]:
+                        pontos_de_teste.append((px, py))
 
-        depsgraph = bpy.context.evaluated_depsgraph_get()
-        obj.hide_set(True)
-        bpy.context.view_layer.update()
-        altura_alvo_z = 0.0
-        objeto_abaixo = None 
-        
-        for px, py in pontos_de_teste:
-            ray_scene = bpy.context.scene.ray_cast(depsgraph, mathutils.Vector((px, py, 10.0)), mathutils.Vector((0, 0, -1)))
-            if ray_scene[0] and ray_scene[1].z >= altura_alvo_z:
-                altura_alvo_z = ray_scene[1].z
-                objeto_abaixo = ray_scene[4] 
-                    
-        obj.hide_set(False)
-        obj.location.z = altura_alvo_z
-        suporte_dos_objetos[obj.name] = objeto_abaixo.name if objeto_abaixo else None
+            depsgraph = bpy.context.evaluated_depsgraph_get()
+            obj.hide_set(True)
+            bpy.context.view_layer.update()
+            altura_alvo_z = 0.0
+            objeto_abaixo = None 
+            
+            for px, py in pontos_de_teste:
+                ray_scene = bpy.context.scene.ray_cast(depsgraph, mathutils.Vector((px, py, 10.0)), mathutils.Vector((0, 0, -1)))
+                if ray_scene[0] and ray_scene[1].z >= altura_alvo_z:
+                    altura_alvo_z = ray_scene[1].z
+                    objeto_abaixo = ray_scene[4] 
+                        
+            obj.hide_set(False)
+            obj.location.z = altura_alvo_z
+            suporte_dos_objetos[obj.name] = objeto_abaixo.name if objeto_abaixo else None
         
         bpy.ops.object.select_all(action='DESELECT')
         obj.select_set(True)
@@ -406,7 +404,7 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
                     saida_mix_ad = mix_adesivo.outputs['Color']
 
                 mix_adesivo.location = (-300, 300)
-                input_fac_ad.default_value = 0.65
+                input_fac_ad.default_value = 0.8  
                 
                 links.new(tex_node.outputs['Color'], input_a_ad)
                 fator_escuro_cmyk = (0.30, 0.30, 0.30, 0.5)
@@ -417,8 +415,8 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
                     bsdf.inputs[pino_cor].default_value = cor_svg
             
             roughness_final = regra['roughness']
-            if usar_verniz and tipo_material == 'MDF':
-                roughness_final = 0.015
+            if usar_verniz and tipo_material in ['MDF', 'MDF_COSTAS']:
+                roughness_final = 0.03
 
             if 'Roughness' in bsdf.inputs: 
                 bsdf.inputs['Roughness'].default_value = roughness_final
@@ -449,7 +447,7 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
                         t_mat = item['tipo_material']
                         if t_mat in ['BASE', 'BASE_FINA']: 
                             return True 
-                        elif t_mat in ['MDF']: 
+                        elif t_mat in ['MDF', 'MDF_COSTAS']: 
                             return False 
                 except (ReferenceError, AttributeError):
                     continue
@@ -481,7 +479,8 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
                     except ReferenceError:
                         continue
 
-            if t_mat in ['BASE', 'BASE_FINA']: 
+            # MDF_COSTAS NÃO ROTACIONA
+            if t_mat in ['BASE', 'BASE_FINA', 'MDF_COSTAS']: 
                 deve_rotacionar = False  
             elif t_mat in ['ACRILICO', 'ADESIVO', 'RESINA_AREA']:
                 if apoiado_direto_na_base or esta_apoiado_na_base(nome_obj):
@@ -501,6 +500,7 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         except (ReferenceError, AttributeError):
             pass
 
+    # ROTAÇÃO DO CORPO PRINCIPAL DO TROFÉU
     if pecas_corpo:
         bpy.context.view_layer.update() 
         min_y = min_z = float('inf')
@@ -518,6 +518,44 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
             obj.matrix_world = matriz_final @ obj.matrix_world
 
     print("Troféu base montado e alinhado com sucesso!", flush=True)
+
+    # --- PROCESSAMENTO DO MDF COSTAS (APÓS A ROTAÇÃO DO CORPO) ---
+    for item in elementos_mapeados:
+        if item['tipo_material'] == 'MDF_COSTAS':
+            obj_costas = item['obj']
+            
+            try:
+                if not obj_costas or obj_costas.name not in bpy.data.objects:
+                    continue
+            except (ReferenceError, RuntimeError):
+                continue
+                
+            bpy.context.view_layer.update()
+            
+            # Pega peças válidas rotacionadas do corpo
+            pecas_rotacionadas_validas = []
+            for p in pecas_corpo:
+                try:
+                    if p and p.name in bpy.data.objects:
+                        pecas_rotacionadas_validas.append(p)
+                except (ReferenceError, RuntimeError):
+                    continue
+            
+            if pecas_rotacionadas_validas:
+                # Encontra o Y máximo (face traseira) do corpo rotacionado
+                max_y_traseiro = float('-inf')
+                for p_obj in pecas_rotacionadas_validas:
+                    cantos_p = [p_obj.matrix_world @ mathutils.Vector(v) for v in p_obj.bound_box]
+                    max_y_traseiro = max(max_y_traseiro, max(v.y for v in cantos_p))
+                
+                cantos_costas = [obj_costas.matrix_world @ mathutils.Vector(v) for v in obj_costas.bound_box]
+                min_y_costas = min(v.y for v in cantos_costas)
+                
+                # REPOSICIONAMENTO APENAS NO EIXO Y (Colando nas costas)
+                deslocamento_y = max_y_traseiro - min_y_costas
+                obj_costas.location.y += deslocamento_y + 0.0005
+                
+                bpy.context.view_layer.update()
 
     # --- PROCESSAMENTO DA RESINA COMO ÚLTIMA ETAPA ---
     dados_resina_pendente = next((i for i in elementos_mapeados if i['tipo_material'] == 'RESINA_AREA'), None)
@@ -588,11 +626,9 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
                 if malhas_resina:
                     resina_3d_obj = malhas_resina[0]
                     
-                    # --- APLICAÇÃO DA COR, IOR E PROPRIEDADES DO SVG NA RESINA ---
                     preenchimento_val = dados_resina_pendente['dados'].get('preenchimento', 'Nenhum')
                     regra_resina = dados_resina_pendente['regra']
                     
-                    # Limpa materiais genéricos/antigos do arquivo importado
                     resina_3d_obj.data.materials.clear()
                     
                     nome_mat_resina = f"Mat_Resina_{dados_resina_pendente['nome_base']}"
@@ -603,23 +639,19 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
                     bsdf = nodes.get("Principled BSDF")
                     
                     if bsdf:
-                        # 1. Aplica a cor de preenchimento se existir
                         if preenchimento_val != 'Nenhum':
                             cor_rgba = hex_para_rgba(preenchimento_val)
                             if 'Base Color' in bsdf.inputs:
                                 bsdf.inputs['Base Color'].default_value = cor_rgba
                         
-                        # 2. Aplica a Rugosidade (Roughness) definida na regra
                         if 'Roughness' in bsdf.inputs:
-                            bsdf.inputs['Roughness'].default_value = regra_resina.get('roughness', 0.1)
+                            bsdf.inputs['Roughness'].default_value = regra_resina.get('roughness', 0.05)
                             
-                        # 3. Aplica a Transmissão / Transparência (Transmission)
                         if 'Transmission Weight' in bsdf.inputs:
-                            bsdf.inputs['Transmission Weight'].default_value = regra_resina.get('transmission', 0.0)
+                            bsdf.inputs['Transmission Weight'].default_value = regra_resina.get('transmission', 0.9)
                         elif 'Transmission' in bsdf.inputs:
-                            bsdf.inputs['Transmission'].default_value = regra_resina.get('transmission', 0.0)
+                            bsdf.inputs['Transmission'].default_value = regra_resina.get('transmission', 0.9)
                             
-                        # 4. Aplica o IOR (Índice de Refração)
                         if 'IOR' in bsdf.inputs and 'ior' in regra_resina:
                             bsdf.inputs['IOR'].default_value = regra_resina['ior']
                     
