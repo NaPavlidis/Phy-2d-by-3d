@@ -685,7 +685,7 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
                     
                     if svg_eh_horizontal != obj_eh_horizontal:
                         resina_3d_obj.rotation_euler.z += math.radians(90)
-                        bpy.context.view_layer.update()
+                        bpy.context.view_layer.update() 
                         
                         cantos_obj = [resina_3d_obj.matrix_world @ mathutils.Vector(v) for v in resina_3d_obj.bound_box]
                         largura_obj = abs(max(v.x for v in cantos_obj) - min(v.x for v in cantos_obj))
