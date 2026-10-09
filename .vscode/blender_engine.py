@@ -24,16 +24,16 @@ REGRAS_MATERIAIS = {
     '#00afef': { 'tipo': 'MDF_COSTAS', 'nome_material': 'MDF_Costas_3mm', 'extrusao': 0.003, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.15 },
 
     # RESINA (Área guia sem extrusão)
-    '#00a859': { 'tipo': 'RESINA_AREA', 'nome_material': 'Area_Resina', 'extrusao': 0.0, 'roughness': 0.05, 'transmission': 0.9, 'ior': 1.45 },
+    '#00a859': { 'tipo': 'RESINA_AREA', 'nome_material': 'Area_Resina', 'extrusao': 0.0, 'roughness': 0.1, 'transmission': 0.2, 'ior': 1.3 },
 
     # BASES
-    "#f58634": { 'tipo': 'BASE', 'nome_material': 'Base_3MM', 'extrusao': 0.003, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.15},
-    "#3e4095": { 'tipo': 'BASE', 'nome_material': 'Base_6MM', 'extrusao': 0.01, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.15},
-    "#f7adaf": { 'tipo': 'BASE', 'nome_material': 'Base_9MM', 'extrusao': 0.015, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.15},
-    "#84716b": { 'tipo': 'BASE', 'nome_material': 'Base_12MM', 'extrusao': 0.12, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.15},
+    "#f58634": { 'tipo': 'BASE', 'nome_material': 'Base_3MM', 'extrusao': 0.005, 'roughness': 0.1, 'transmission': 0.02, 'ior': 1.03},
+    "#3e4095": { 'tipo': 'BASE', 'nome_material': 'Base_6MM', 'extrusao': 0.01, 'roughness': 0.1, 'transmission': 0.02, 'ior': 1.03},
+    "#f7adaf": { 'tipo': 'BASE', 'nome_material': 'Base_9MM', 'extrusao': 0.015, 'roughness': 0.1, 'transmission': 0.02, 'ior': 1.03},
+    "#84716b": { 'tipo': 'BASE', 'nome_material': 'Base_12MM', 'extrusao': 0.12, 'roughness': 0.1, 'transmission': 0.02, 'ior': 1.03},
     
     # ADESIVOS
-    '#ec268f': { 'tipo': 'ADESIVO', 'nome_material': 'Adesivo_Padrao', 'extrusao': 0.0001, 'roughness': 0.1, 'transmission': 0.003, 'ior': 1.1 }
+    '#ec268f': { 'tipo': 'ADESIVO', 'nome_material': 'Adesivo_Padrao', 'extrusao': 0.0001, 'roughness': 0.1, 'transmission': 0.003, 'ior': 1.02 }
 }
 
 
@@ -41,7 +41,7 @@ def hex_para_rgba(hex_color, alpha=1.0):
     if not hex_color or not hex_color.startswith('#'): return (1.0, 1.0, 1.0, alpha)
     hex_color = hex_color.lstrip('#').lower()
     r, g, b = int(hex_color[0:2], 16)/255.0, int(hex_color[2:4], 16)/255.0, int(hex_color[4:6], 16)/255.0
-    fator_cmyk = 0.75 
+    fator_cmyk = 0.70
     r, g, b = r * fator_cmyk, g * fator_cmyk, b * fator_cmyk
     def srgb_para_linear(c): return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
     return (srgb_para_linear(r), srgb_para_linear(g), srgb_para_linear(b), alpha)
