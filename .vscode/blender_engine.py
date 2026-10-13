@@ -36,12 +36,14 @@ REGRAS_MATERIAIS = {
     '#ec268f': { 'tipo': 'ADESIVO', 'nome_material': 'Adesivo_Padrao', 'extrusao': 0.0001, 'roughness': 0.08, 'transmission': 0.008, 'ior': 1.03 }
 }
 
+# Fator para escurecer o CMYK do adesivo. (1.0 = normal, 0.85 = 15% mais escuro)
+FATOR_ESCURECIMENTO_ADESIVO = 0.85
 
 def hex_para_rgba(hex_color, alpha=1.0):
     if not hex_color or not hex_color.startswith('#'): return (1.0, 1.0, 1.0, alpha)
     hex_color = hex_color.lstrip('#').lower()
     r, g, b = int(hex_color[0:2], 16)/255.0, int(hex_color[2:4], 16)/255.0, int(hex_color[4:6], 16)/255.0
-    fator_cmyk = 0.55
+    fator_cmyk = 0.70
     r, g, b = r * fator_cmyk, g * fator_cmyk, b * fator_cmyk
     def srgb_para_linear(c): return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
     return (srgb_para_linear(r), srgb_para_linear(g), srgb_para_linear(b), alpha)
@@ -387,32 +389,29 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
                     tex_node.image = img_blender
                 tex_node.location = (-600, 300)
 
-                if bpy.app.version >= (3, 4, 0):
-                    mix_adesivo = nodes.new('ShaderNodeMix')
-                    mix_adesivo.data_type = 'RGBA'
-                    mix_adesivo.blend_type = 'MULTIPLY'
-                    input_fac_ad = mix_adesivo.inputs.get('Factor', mix_adesivo.inputs[0])
-                    input_a_ad = mix_adesivo.inputs.get('A', mix_adesivo.inputs[6])
-                    input_b_ad = mix_adesivo.inputs.get('B', mix_adesivo.inputs[7])
-                    saida_mix_ad = mix_adesivo.outputs.get('Result', mix_adesivo.outputs[2])
-                else:
-                    mix_adesivo = nodes.new('ShaderNodeMixRGB')
-                    mix_adesivo.blend_type = 'MULTIPLY'
-                    input_fac_ad = mix_adesivo.inputs['Fac']
-                    input_a_ad = mix_adesivo.inputs['Color1']
-                    input_b_ad = mix_adesivo.inputs['Color2']
-                    saida_mix_ad = mix_adesivo.outputs['Color']
-
-                mix_adesivo.location = (-300, 300)
-                input_fac_ad.default_value = 0.8  
+                # Cria um nodo de Matiz/Saturação (HSV) para escurecer a cor do adesivo
+                hsv_node = nodes.new(type="ShaderNodeHueSaturation")
+                hsv_node.location = (-300, 300)
                 
-                links.new(tex_node.outputs['Color'], input_a_ad)
-                fator_escuro_cmyk = (0.30, 0.30, 0.30, 0.5)
-                input_b_ad.default_value = fator_escuro_cmyk
-                links.new(saida_mix_ad, bsdf.inputs[pino_cor])
+                # Define o fator de escurecimento no canal 'Value' (Luminosidade)
+                hsv_node.inputs['Value'].default_value = FATOR_ESCURECIMENTO_ADESIVO
+                
+                # Conecta: Textura -> HSV -> Principled BSDF
+                links.new(tex_node.outputs['Color'], hsv_node.inputs['Color'])
+                links.new(hsv_node.outputs['Color'], bsdf.inputs[pino_cor])
             else:
                 if preenchimento_val != 'Nenhum':
-                    bsdf.inputs[pino_cor].default_value = cor_svg
+                    if tipo_material == 'ADESIVO':
+                        # Escurece se for um adesivo feito de cor sólida sem textura
+                        cor_escurecida = (
+                            cor_svg[0] * FATOR_ESCURECIMENTO_ADESIVO,
+                            cor_svg[1] * FATOR_ESCURECIMENTO_ADESIVO,
+                            cor_svg[2] * FATOR_ESCURECIMENTO_ADESIVO,
+                            cor_svg[3]
+                        )
+                        bsdf.inputs[pino_cor].default_value = cor_escurecida
+                    else:
+                        bsdf.inputs[pino_cor].default_value = cor_svg
             
             roughness_final = regra['roughness']
             if usar_verniz and tipo_material in ['MDF', 'MDF_COSTAS']:
@@ -519,45 +518,65 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
 
     print("Troféu base montado e alinhado com sucesso!", flush=True)
 
-    # --- PROCESSAMENTO DO MDF COSTAS (APÓS A ROTAÇÃO DO CORPO) ---
+    # =========================================================================
+    # --- 1. PROCESSAMENTO DO MDF COSTAS E ADESIVOS (SEMPRE NA VERTICAL) ---
+    # =========================================================================
     for item in elementos_mapeados:
         if item['tipo_material'] == 'MDF_COSTAS':
             obj_costas = item['obj']
             
-            try:
-                if not obj_costas or obj_costas.name not in bpy.data.objects:
-                    continue
-            except (ReferenceError, RuntimeError):
+            if not obj_costas or obj_costas.name not in bpy.data.objects:
                 continue
                 
             bpy.context.view_layer.update()
+            obj_costas.hide_set(False)
+            obj_costas.hide_viewport = False
             
-            # Pega peças válidas rotacionadas do corpo
-            pecas_rotacionadas_validas = []
-            for p in pecas_corpo:
-                try:
-                    if p and p.name in bpy.data.objects:
-                        pecas_rotacionadas_validas.append(p)
-                except (ReferenceError, RuntimeError):
-                    continue
+            bpy.ops.object.select_all(action='DESELECT')
+            obj_costas.select_set(True)
+            bpy.context.view_layer.objects.active = obj_costas
+            bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
+            bpy.context.view_layer.update()
+
+            pecas_rotacionadas = [p for p in pecas_corpo if p and p.name in bpy.data.objects]
             
-            if pecas_rotacionadas_validas:
-                # Encontra o Y máximo (face traseira) do corpo rotacionado
+            if pecas_rotacionadas:
+                # Acha a face traseira do corpo do troféu
                 max_y_traseiro = float('-inf')
-                for p_obj in pecas_rotacionadas_validas:
+                for p_obj in pecas_rotacionadas:
                     cantos_p = [p_obj.matrix_world @ mathutils.Vector(v) for v in p_obj.bound_box]
                     max_y_traseiro = max(max_y_traseiro, max(v.y for v in cantos_p))
                 
+                # Acha a face frontal do MDF_COSTAS
                 cantos_costas = [obj_costas.matrix_world @ mathutils.Vector(v) for v in obj_costas.bound_box]
                 min_y_costas = min(v.y for v in cantos_costas)
                 
-                # REPOSICIONAMENTO APENAS NO EIXO Y (Colando nas costas)
-                deslocamento_y = max_y_traseiro - min_y_costas
-                obj_costas.location.y += deslocamento_y + 0.0005
+                # Zera a altura baseada na conversão 2D -> 3D
+                min_y_global_svg = min(min(v.y for v in [p.matrix_world @ mathutils.Vector(v_b) for v_b in p.bound_box]) for p in pecas_rotacionadas)
+                altura_z = abs(min_y_costas - min_y_global_svg)
                 
+                old_y = obj_costas.location.y
+                old_z = obj_costas.location.z
+                
+                # Cola a chapa nas costas do troféu (Apenas Translada Y e Z)
+                obj_costas.location.y += (max_y_traseiro - min_y_costas) + 0.001
+                obj_costas.location.z = altura_z
                 bpy.context.view_layer.update()
+                
+                delta_y = obj_costas.location.y - old_y
+                delta_z = obj_costas.location.z - old_z
+                
+                # Move os filhos (adesivos da pista) SEM alterar a rotação de nenhum deles
+                for item_dep in elementos_mapeados:
+                    if item_dep['obj'] and suporte_dos_objetos.get(item_dep['obj'].name) == obj_costas.name:
+                        obj_filho = item_dep['obj']
+                        obj_filho.location.y += delta_y
+                        obj_filho.location.z += delta_z
+                        bpy.context.view_layer.update()
 
-    # --- PROCESSAMENTO DA RESINA COMO ÚLTIMA ETAPA ---
+    # =========================================================================
+    # --- 2. PROCESSAMENTO DA RESINA 3D (KART) ---
+    # =========================================================================
     dados_resina_pendente = next((i for i in elementos_mapeados if i['tipo_material'] == 'RESINA_AREA'), None)
 
     if dados_resina_pendente:
@@ -566,25 +585,33 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
         if obj_marcado_svg and obj_marcado_svg.name in bpy.data.objects:
             bpy.context.view_layer.update()
             
-            eh_mdf_rotacionado = 'matriz_final' in locals() and obj_marcado_svg in pecas_corpo
+            sup_nome = suporte_dos_objetos.get(obj_marcado_svg.name)
+            obj_sup = bpy.data.objects.get(sup_nome) if sup_nome else None
+
+            # Zera rotações da guia temporariamente para medir escala 2D sem distorção
+            rot_z_original = obj_marcado_svg.rotation_euler.z
+            rot_x_original = obj_marcado_svg.rotation_euler.x 
+            obj_marcado_svg.rotation_euler = (0.0, 0.0, 0.0)
+            bpy.context.view_layer.update()
+            
+            cantos_guia_zero = [obj_marcado_svg.matrix_world @ mathutils.Vector(v) for v in obj_marcado_svg.bound_box]
+            dx = max(v.x for v in cantos_guia_zero) - min(v.x for v in cantos_guia_zero)
+            dy = max(v.y for v in cantos_guia_zero) - min(v.y for v in cantos_guia_zero)
+            dz = max(v.z for v in cantos_guia_zero) - min(v.z for v in cantos_guia_zero)
+            
+            dimensoes = sorted([dx, dy, dz], reverse=True)
+            largura_svg = dimensoes[0]
+            altura_svg = dimensoes[1]
+            
+            # Devolve as rotações
+            obj_marcado_svg.rotation_euler = (rot_x_original, 0.0, rot_z_original)
+            bpy.context.view_layer.update()
+            
+            # Pega o centro da guia perfeitamente reposicionada
             cantos_guia = [obj_marcado_svg.matrix_world @ mathutils.Vector(v) for v in obj_marcado_svg.bound_box]
-            
-            xs_guia = [v.x for v in cantos_guia]
-            ys_guia = [v.y for v in cantos_guia]
-            zs_guia = [v.z for v in cantos_guia]
-            
-            largura_svg = abs(max(xs_guia) - min(xs_guia))
-            
-            if eh_mdf_rotacionado:
-                altura_svg = abs(max(zs_guia) - min(zs_guia))
-                centro_x = (max(xs_guia) + min(xs_guia)) / 2.0
-                centro_y = (max(ys_guia) + min(ys_guia)) / 2.0
-                centro_z = (max(zs_guia) + min(zs_guia)) / 2.0
-            else:
-                altura_svg = abs(max(ys_guia) - min(ys_guia))
-                centro_x = (max(xs_guia) + min(xs_guia)) / 2.0
-                centro_y = (max(ys_guia) + min(ys_guia)) / 2.0
-                centro_z = max(zs_guia)
+            centro_x_guia = sum(v.x for v in cantos_guia) / 8.0
+            centro_y_guia = sum(v.y for v in cantos_guia) / 8.0
+            centro_z_guia = sum(v.z for v in cantos_guia) / 8.0
 
             if caminho_modelo_resina and os.path.exists(caminho_modelo_resina):
                 extensao = os.path.splitext(caminho_modelo_resina)[1].lower()
@@ -592,25 +619,21 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
                 
                 try:
                     if extensao in ['.obj', '.wavefront']:
-                        window = bpy.context.window_manager.windows[0] if bpy.context.window_manager.windows else None
-                        screen = window.screen if window else None
-                        area = next((a for a in screen.areas if a.type == 'VIEW_3D'), None) if screen else None
-
-                        if window and area:
-                            with bpy.context.temp_override(window=window, area=area):
-                                bpy.ops.wm.obj_import(filepath=caminho_modelo_resina)
-                        else:
-                            bpy.ops.wm.obj_import(filepath=caminho_modelo_resina)
-
-                    elif extensao == '.fbx':
                         try:
-                            bpy.ops.import_scene.fbx(filepath=caminho_modelo_resina, use_custom_props=False)
-                        except Exception as err_fbx:
-                            print(f"⚠️ AVISO: FBX importado com ressalvas: {err_fbx}", flush=True)
-
+                            bpy.ops.import_scene.obj(filepath=caminho_modelo_resina)
+                        except AttributeError:
+                            janelas = bpy.context.window_manager.windows
+                            if janelas:
+                                window = janelas[0]
+                                area_3d = next((a for a in window.screen.areas if a.type == 'VIEW_3D'), window.screen.areas[0])
+                                with bpy.context.temp_override(window=window, area=area_3d):
+                                    bpy.ops.wm.obj_import(filepath=caminho_modelo_resina)
+                            else:
+                                bpy.ops.wm.obj_import(filepath=caminho_modelo_resina)
+                    elif extensao == '.fbx':
+                        bpy.ops.import_scene.fbx(filepath=caminho_modelo_resina, use_custom_props=False)
                     elif extensao == '.stl':
                         bpy.ops.wm.stl_import(filepath=caminho_modelo_resina)
-
                     elif extensao == '.blend':
                         with bpy.data.libraries.load(caminho_modelo_resina, link=False) as (data_from, data_to):
                             data_to.objects = data_from.objects
@@ -618,7 +641,7 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
                             if obj_carregado is not None:
                                 bpy.context.scene.collection.objects.link(obj_carregado)
                 except Exception as e_import:
-                    print(f"❌ Erro ao importar modelo de resina: {e_import}", flush=True)
+                    print(f"❌ Erro ao importar resina: {e_import}", flush=True)
 
                 novos_objs = list(set(bpy.context.scene.objects) - objs_antes_import)
                 malhas_resina = [o for o in novos_objs if o.type == 'MESH']
@@ -626,107 +649,109 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
                 if malhas_resina:
                     resina_3d_obj = malhas_resina[0]
                     
+                    # --- MATERIAIS ---
                     preenchimento_val = dados_resina_pendente['dados'].get('preenchimento', 'Nenhum')
                     regra_resina = dados_resina_pendente['regra']
-                    
                     resina_3d_obj.data.materials.clear()
-                    
                     nome_mat_resina = f"Mat_Resina_{dados_resina_pendente['nome_base']}"
                     mat_resina = bpy.data.materials.new(name=nome_mat_resina)
                     mat_resina.use_nodes = True
-                    
                     nodes = mat_resina.node_tree.nodes
                     bsdf = nodes.get("Principled BSDF")
-                    
                     if bsdf:
                         if preenchimento_val != 'Nenhum':
-                            cor_rgba = hex_para_rgba(preenchimento_val)
-                            if 'Base Color' in bsdf.inputs:
-                                bsdf.inputs['Base Color'].default_value = cor_rgba
-                        
+                            bsdf.inputs['Base Color'].default_value = hex_para_rgba(preenchimento_val)
                         if 'Roughness' in bsdf.inputs:
                             bsdf.inputs['Roughness'].default_value = regra_resina.get('roughness', 0.05)
-                            
                         if 'Transmission Weight' in bsdf.inputs:
                             bsdf.inputs['Transmission Weight'].default_value = regra_resina.get('transmission', 0.9)
                         elif 'Transmission' in bsdf.inputs:
                             bsdf.inputs['Transmission'].default_value = regra_resina.get('transmission', 0.9)
-                            
                         if 'IOR' in bsdf.inputs and 'ior' in regra_resina:
                             bsdf.inputs['IOR'].default_value = regra_resina['ior']
-                    
                     resina_3d_obj.data.materials.append(mat_resina)
 
                     resina_3d_obj.hide_set(False)
                     resina_3d_obj.hide_viewport = False
-                    resina_3d_obj.hide_render = False
-                    
                     bpy.ops.object.select_all(action='DESELECT')
                     resina_3d_obj.select_set(True)
                     bpy.context.view_layer.objects.active = resina_3d_obj
-                    
                     bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
                     bpy.context.view_layer.update()
-                    
-                    if eh_mdf_rotacionado:
-                        resina_3d_obj.rotation_euler.x += math.radians(90)
-                        bpy.context.view_layer.update()
 
-                    cantos_obj = [resina_3d_obj.matrix_world @ mathutils.Vector(v) for v in resina_3d_obj.bound_box]
-                    largura_obj = abs(max(v.x for v in cantos_obj) - min(v.x for v in cantos_obj))
-                    
-                    if eh_mdf_rotacionado:
-                        altura_obj = abs(max(v.z for v in cantos_obj) - min(v.z for v in cantos_obj))
-                    else:
-                        altura_obj = abs(max(v.y for v in cantos_obj) - min(v.y for v in cantos_obj))
-
-                    svg_eh_horizontal = largura_svg >= altura_svg
-                    obj_eh_horizontal = largura_obj >= altura_obj
-                    
-                    if svg_eh_horizontal != obj_eh_horizontal:
-                        resina_3d_obj.rotation_euler.z += math.radians(90)
-                        bpy.context.view_layer.update() 
-                        
-                        cantos_obj = [resina_3d_obj.matrix_world @ mathutils.Vector(v) for v in resina_3d_obj.bound_box]
-                        largura_obj = abs(max(v.x for v in cantos_obj) - min(v.x for v in cantos_obj))
-                        if eh_mdf_rotacionado:
-                            altura_obj = abs(max(v.z for v in cantos_obj) - min(v.z for v in cantos_obj))
+                    # =========================================================
+                    # DETECÇÃO EXATA: ESTÁ NA BASE OU NO CORPO/MDF?
+                    # =========================================================
+                    eh_na_base = False
+                    sup_atual = obj_marcado_svg.name
+                    visitados = set()
+                    while sup_atual and sup_atual not in visitados:
+                        visitados.add(sup_atual)
+                        pai_nome = suporte_dos_objetos.get(sup_atual)
+                        if pai_nome:
+                            item_pai = next((i for i in elementos_mapeados if i['obj'] and i['obj'].name == pai_nome), None)
+                            if item_pai and 'BASE' in item_pai['tipo_material'].upper():
+                                eh_na_base = True
+                                break
+                            sup_atual = pai_nome
                         else:
-                            altura_obj = abs(max(v.y for v in cantos_obj) - min(v.y for v in cantos_obj))
+                            break
 
-                    if largura_obj > 0.0001 and altura_obj > 0.0001 and largura_svg > 0.0001 and altura_svg > 0.0001:
-                        fator_x = largura_svg / largura_obj
-                        fator_y = altura_svg / altura_obj
-                        escala_proporcional = min(fator_x, fator_y)
-                        
-                        if escala_proporcional > 0:
-                            resina_3d_obj.scale = (
-                                resina_3d_obj.scale.x * escala_proporcional,
-                                resina_3d_obj.scale.y * escala_proporcional,
-                                resina_3d_obj.scale.z * escala_proporcional
-                            )
+                    correcao_frente = 0.0 # Altere se o modelo vier invertido
+
+                    if eh_na_base:
+                        # --- 1. KART NA BASE: 0° em X (Permanece em pé como veio) ---
+                        resina_3d_obj.rotation_euler = (0.0, 0.0, -rot_z_original + correcao_frente)
                         bpy.context.view_layer.update()
 
-                    cantos_finais = [resina_3d_obj.matrix_world @ mathutils.Vector(v) for v in resina_3d_obj.bound_box]
-                    centro_x_res = (max(v.x for v in cantos_finais) + min(v.x for v in cantos_finais)) / 2.0
-                    
-                    if eh_mdf_rotacionado:
-                        centro_z_res = (max(v.z for v in cantos_finais) + min(v.z for v in cantos_finais)) / 2.0
-                        max_y_res = max(v.y for v in cantos_finais)
-                        
-                        resina_3d_obj.location.x += (centro_x - centro_x_res)
-                        resina_3d_obj.location.z += (centro_z - centro_z_res)
-                        
-                        min_y_guia_mdf = min(ys_guia)
-                        resina_3d_obj.location.y += (min_y_guia_mdf - max_y_res) - 0.001
-                    else:
-                        centro_y_res = (max(v.y for v in cantos_finais) + min(v.y for v in cantos_finais)) / 2.0
-                        min_z_res = min(v.z for v in cantos_finais)
-                        
-                        resina_3d_obj.location.x += (centro_x - centro_x_res)
-                        resina_3d_obj.location.y += (centro_y - centro_y_res)
-                        resina_3d_obj.location.z += (max(zs_guia) - min_z_res) + 0.001
+                        cantos_kart = [resina_3d_obj.matrix_world @ mathutils.Vector(v) for v in resina_3d_obj.bound_box]
+                        larg_kart = max(v.x for v in cantos_kart) - min(v.x for v in cantos_kart)
+                        prof_kart = max(v.y for v in cantos_kart) - min(v.y for v in cantos_kart)
 
+                        if larg_kart > 0.0001 and prof_kart > 0.0001:
+                            escala = min(largura_svg / larg_kart, altura_svg / prof_kart)
+                            resina_3d_obj.scale = (resina_3d_obj.scale.x * escala, resina_3d_obj.scale.y * escala, resina_3d_obj.scale.z * escala)
+                            bpy.context.view_layer.update()
+
+                        cantos_finais = [resina_3d_obj.matrix_world @ mathutils.Vector(v) for v in resina_3d_obj.bound_box]
+                        cx = sum(v.x for v in cantos_finais) / 8.0
+                        cy = sum(v.y for v in cantos_finais) / 8.0
+                        min_z_res = min(v.z for v in cantos_finais)
+
+                        max_z_sup = max((obj_sup.matrix_world @ mathutils.Vector(v)).z for v in obj_sup.bound_box) if obj_sup else centro_z_guia
+
+                        # Apoia o Kart no Z máximo da Base
+                        resina_3d_obj.location.x += (centro_x_guia - cx)
+                        resina_3d_obj.location.y += (centro_y_guia - cy)
+                        resina_3d_obj.location.z += (max_z_sup - min_z_res) + 0.001
+
+                    else:
+                        # --- 2. KART NO TROFÉU/MDF: 90° em X (Rotaciona para colar na chapa) ---
+                        resina_3d_obj.rotation_euler = (math.radians(90), 0.0, -rot_z_original + correcao_frente)
+                        bpy.context.view_layer.update()
+
+                        cantos_kart = [resina_3d_obj.matrix_world @ mathutils.Vector(v) for v in resina_3d_obj.bound_box]
+                        larg_kart = max(v.x for v in cantos_kart) - min(v.x for v in cantos_kart)
+                        alt_kart = max(v.z for v in cantos_kart) - min(v.z for v in cantos_kart)
+
+                        if larg_kart > 0.0001 and alt_kart > 0.0001:
+                            escala = min(largura_svg / larg_kart, altura_svg / alt_kart)
+                            resina_3d_obj.scale = (resina_3d_obj.scale.x * escala, resina_3d_obj.scale.y * escala, resina_3d_obj.scale.z * escala)
+                            bpy.context.view_layer.update()
+
+                        cantos_finais = [resina_3d_obj.matrix_world @ mathutils.Vector(v) for v in resina_3d_obj.bound_box]
+                        cx = sum(v.x for v in cantos_finais) / 8.0
+                        cz = sum(v.z for v in cantos_finais) / 8.0
+                        max_y_res = max(v.y for v in cantos_finais)
+
+                        min_y_sup = min((obj_sup.matrix_world @ mathutils.Vector(v)).y for v in obj_sup.bound_box) if obj_sup else centro_y_guia
+
+                        # Cola as costas do Kart no Y mínimo do Corpo/Adesivo
+                        resina_3d_obj.location.x += (centro_x_guia - cx)
+                        resina_3d_obj.location.z += (centro_z_guia - cz)
+                        resina_3d_obj.location.y += (min_y_sup - max_y_res) - 0.001
+
+                    bpy.context.view_layer.update()
                     objetos_importados.append(resina_3d_obj)
 
             try:
