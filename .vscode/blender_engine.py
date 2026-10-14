@@ -37,7 +37,7 @@ REGRAS_MATERIAIS = {
 }
 
 # Fator para escurecer o CMYK do adesivo. (1.0 = normal, 0.85 = 15% mais escuro)
-FATOR_ESCURECIMENTO_ADESIVO = 0.85
+FATOR_ESCURECIMENTO_ADESIVO = 0.35
 
 def hex_para_rgba(hex_color, alpha=1.0):
     if not hex_color or not hex_color.startswith('#'): return (1.0, 1.0, 1.0, alpha)
@@ -940,4 +940,4 @@ if __name__ == "__main__":
         if len(argv) > 7:
             caminho_modelo_resina = argv[7]
             
-        processar_svg_no_blender(caminho_svg, pasta_saida, caminho_blend, renderizar_automaticamente, usar_textura, cycles_samples, usar_verniz, caminho_modelo_resina)
+        processar_svg_no_blender(caminho_svg, pasta_saida, caminho_blend, renderizar_automaticamente, usar_textura, cycles_samples, usar_verniz, caminho_modelo_resina)     
