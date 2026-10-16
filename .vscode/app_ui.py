@@ -128,6 +128,7 @@ class SettingsWindow(tk.Toplevel):
 
 
 class VectorConvertProApp(tk.Tk):
+    
     def __init__(self):
         super().__init__()
         self.title("VectorConvert Pro")
