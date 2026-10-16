@@ -24,7 +24,7 @@ MAPA_MATERIAIS = {
     '#d2d3d5': {'tipo': 'MDF', 'nome_material': 'MDF_9mm'},
     '#373435': {'tipo': 'PLOTTER', 'nome_material': 'PLOTTER'},
     '#00afef': {'tipo': 'MDF_COSTAS', 'nome_material': 'MDF_Costas_3mm'},
-    '#00a859': {'tipo': 'RESINA_AREA', 'nome_material': 'Area_Resina'},
+    '#00a859': {'tipo': 'RESINA', 'nome_material': 'RESINA 3D'},
     '#f58634': {'tipo': 'BASE', 'nome_material': 'Base_3MM'},
     '#3e4095': {'tipo': 'BASE', 'nome_material': 'Base_6MM'},
     '#f7adaf': {'tipo': 'BASE', 'nome_material': 'Base_9MM'},
