@@ -547,7 +547,7 @@ def processar_resina_3d(elementos_mapeados, suporte_dos_objetos, caminho_modelo_
 
     rot_z_original = obj_marcado_svg.rotation_euler.z
     rot_x_original = obj_marcado_svg.rotation_euler.x 
-    obj_marcado_svg.rotation_euler = (0.0, 0.0, 0.0)
+    obj_marcado_svg.rotation_euler = (0.0, 0.0, 81)
     bpy.context.view_layer.update()
     
     cantos_guia_zero = [obj_marcado_svg.matrix_world @ mathutils.Vector(v) for v in obj_marcado_svg.bound_box]
