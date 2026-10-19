@@ -386,6 +386,9 @@ def aplicar_materiais_e_empilhar(elementos_mapeados, imagens_disponiveis, usar_v
                     if tipo_material == 'ADESIVO':
                         cor_escurecida = (cor_svg[0]*FATOR_ESCURECIMENTO_ADESIVO, cor_svg[1]*FATOR_ESCURECIMENTO_ADESIVO, cor_svg[2]*FATOR_ESCURECIMENTO_ADESIVO, cor_svg[3])
                         bsdf.inputs[pino_cor].default_value = cor_escurecida
+                    elif tipo_material == 'ADESIVO':
+                        cor_escurecida = (cor_svg[0]*FATOR_ESCURECIMENTO_ADESIVO, cor_svg[1]*FATOR_ESCURECIMENTO_ADESIVO, cor_svg[2]*FATOR_ESCURECIMENTO_ADESIVO, cor_svg[3])
+                        bsdf.inputs[pino_cor].default_value = cor_escurecida
                     else:
                         bsdf.inputs[pino_cor].default_value = cor_svg
             
