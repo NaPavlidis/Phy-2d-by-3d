@@ -745,7 +745,7 @@ def configurar_cameras(objetos_importados):
     tamanho_real = max(tamanho_z, tamanho_x / aspect_ratio) if aspect_ratio > 1 else max(tamanho_x, tamanho_z * aspect_ratio)
     
     # MARGEM DE ENQUADRAMENTO: 1.22 deixa o troféu bem próximo e preenchendo a tela do render
-    MARGEM_ENQUADRAMENTO = 1.3
+    MARGEM_ENQUADRAMENTO = 1.6
     distancia_base = (tamanho_real / 2.0) / math.tan(fov / 2.0) * MARGEM_ENQUADRAMENTO
 
     ponto_focal_alvo = alvo_centro.copy()   
@@ -769,7 +769,7 @@ def configurar_cameras(objetos_importados):
     cam_principal = criar_e_apontar_camera("Camera_Principal", pos_cam_principal, ponto_focal_alvo)
 
     angulo_diag = math.radians(35)
-    dist_lateral = distancia_base * 1.05
+    dist_lateral = distancia_base * 1.2
 
     criar_e_apontar_camera(
         "Camera_Esquerda",
