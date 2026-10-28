@@ -14,14 +14,14 @@ import threading
 
 REGRAS_MATERIAIS = {    
     # ACRÍLICOS
-    '#ed3237': { 'tipo': 'ACRILICO', 'nome_material': 'acrilico_padrão', 'extrusao': 0.001, 'roughness': 0.08, 'transmission': 1.0, 'ior': 1.49 },
+    '#ed3237': { 'tipo': 'ACRILICO', 'nome_material': 'acrilico_padrão', 'extrusao': 0.001, 'roughness': 0.08, 'transmission': 1.0, 'ior': 1.8 },
     '#fff212': { 'tipo': 'ACRILICO', 'nome_material': 'Acrilico_transparente', 'extrusao': 0.001, 'roughness': 0.08, 'transmission': 1.0, 'ior': 2 },
         
     # MDFs
-    '#fefefe': { 'tipo': 'MDF', 'nome_material': 'MDF_3mm', 'extrusao': 0.003, 'roughness': 0.15, 'transmission': 0.2, 'ior': 1.4},
-    '#e6e7e8': { 'tipo': 'MDF', 'nome_material': 'MDF_6mm', 'extrusao': 0.006, 'roughness': 0.15, 'transmission': 0.2, 'ior': 1.4},
-    '#d2d3d5': { 'tipo': 'MDF', 'nome_material': 'MDF_9mm', 'extrusao': 0.009, 'roughness': 0.15, 'transmission': 0.2, 'ior': 1.4},
-    '#373435': { 'tipo': 'PLOTTER', 'nome_material': 'PLOTTER', 'extrusao': 0.0001, 'roughness': 0.15, 'transmission': 0.2, 'ior': 1.4},
+    '#fefefe': { 'tipo': 'MDF', 'nome_material': 'MDF_3mm', 'extrusao': 0.003, 'roughness': 0.1, 'transmission': 0.3, 'ior': 1.08},
+    '#e6e7e8': { 'tipo': 'MDF', 'nome_material': 'MDF_6mm', 'extrusao': 0.006, 'roughness': 0.1, 'transmission': 0.3, 'ior': 1.08},
+    '#d2d3d5': { 'tipo': 'MDF', 'nome_material': 'MDF_9mm', 'extrusao': 0.009, 'roughness': 0.1, 'transmission': 0.3, 'ior': 1.08},
+    '#373435': { 'tipo': 'PLOTTER', 'nome_material': 'PLOTTER', 'extrusao': 0.0001, 'roughness': 0.1, 'transmission': 0.3, 'ior': 1.08},
 
     # NOVO MATERIAL: MDF colocado nas costas do troféu (permanece plano/deitado)
     '#00afef': { 'tipo': 'MDF_COSTAS', 'nome_material': 'MDF_Costas_3mm', 'extrusao': 0.003, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.4 },
