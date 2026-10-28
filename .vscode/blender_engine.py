@@ -14,17 +14,17 @@ import threading
 
 REGRAS_MATERIAIS = {    
     # ACRÍLICOS
-    '#ed3237': { 'tipo': 'ACRILICO', 'nome_material': 'acrilico_padrão', 'extrusao': 0.001, 'roughness': 0.00, 'transmission': 1.0, 'ior': 1.49 },
-    '#fff212': { 'tipo': 'ACRILICO', 'nome_material': 'Acrilico_transparente', 'extrusao': 0.001, 'roughness': 0.01, 'transmission': 1.0, 'ior': 2 },
+    '#ed3237': { 'tipo': 'ACRILICO', 'nome_material': 'acrilico_padrão', 'extrusao': 0.001, 'roughness': 0.08, 'transmission': 1.0, 'ior': 1.49 },
+    '#fff212': { 'tipo': 'ACRILICO', 'nome_material': 'Acrilico_transparente', 'extrusao': 0.001, 'roughness': 0.08, 'transmission': 1.0, 'ior': 2 },
         
     # MDFs
-    '#fefefe': { 'tipo': 'MDF', 'nome_material': 'MDF_3mm', 'extrusao': 0.003, 'roughness': 0.15, 'transmission': 0.2, 'ior': 1.15},
-    '#e6e7e8': { 'tipo': 'MDF', 'nome_material': 'MDF_6mm', 'extrusao': 0.006, 'roughness': 0.15, 'transmission': 0.2, 'ior': 1.15},
-    '#d2d3d5': { 'tipo': 'MDF', 'nome_material': 'MDF_9mm', 'extrusao': 0.009, 'roughness': 0.15, 'transmission': 0.2, 'ior': 1.15},
-    '#373435': { 'tipo': 'PLOTTER', 'nome_material': 'PLOTTER', 'extrusao': 0.0001, 'roughness': 0.15, 'transmission': 0.2, 'ior': 1.15},
+    '#fefefe': { 'tipo': 'MDF', 'nome_material': 'MDF_3mm', 'extrusao': 0.003, 'roughness': 0.15, 'transmission': 0.2, 'ior': 1.4},
+    '#e6e7e8': { 'tipo': 'MDF', 'nome_material': 'MDF_6mm', 'extrusao': 0.006, 'roughness': 0.15, 'transmission': 0.2, 'ior': 1.4},
+    '#d2d3d5': { 'tipo': 'MDF', 'nome_material': 'MDF_9mm', 'extrusao': 0.009, 'roughness': 0.15, 'transmission': 0.2, 'ior': 1.4},
+    '#373435': { 'tipo': 'PLOTTER', 'nome_material': 'PLOTTER', 'extrusao': 0.0001, 'roughness': 0.15, 'transmission': 0.2, 'ior': 1.4},
 
     # NOVO MATERIAL: MDF colocado nas costas do troféu (permanece plano/deitado)
-    '#00afef': { 'tipo': 'MDF_COSTAS', 'nome_material': 'MDF_Costas_3mm', 'extrusao': 0.003, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.15 },
+    '#00afef': { 'tipo': 'MDF_COSTAS', 'nome_material': 'MDF_Costas_3mm', 'extrusao': 0.003, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.4 },
 
     # RESINA (Área guia sem extrusão)
     '#00a859': { 'tipo': 'RESINA_AREA', 'nome_material': 'Area_Resina', 'extrusao': 0.0, 'roughness': 0.1, 'transmission': 0.2, 'ior': 1.3 },
@@ -392,7 +392,7 @@ def aplicar_materiais_e_empilhar(elementos_mapeados, imagens_disponiveis, usar_v
                     else:
                         bsdf.inputs[pino_cor].default_value = cor_svg
             
-            roughness_final = 0.03 if (usar_verniz and tipo_material in ['MDF', 'MDF_COSTAS']) else regra['roughness']
+            roughness_final = 0.03 if (usar_verniz and tipo_material in ['MDF', 'MDF_COSTAS',"base"]) else regra['roughness']
             if 'Roughness' in bsdf.inputs: bsdf.inputs['Roughness'].default_value = roughness_final
 
             if tipo_material != 'ACRILICO':
