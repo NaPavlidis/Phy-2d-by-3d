@@ -2,7 +2,7 @@ import bpy
 import xml.etree.ElementTree as ET
 import re
 import os
-import mathutils 
+import mathutils  # type: ignore[reportMissingImports]  # Provided by Blender's Python runtime.
 import math 
 import sys
 import shutil
@@ -18,10 +18,10 @@ REGRAS_MATERIAIS = {
     '#fff212': { 'tipo': 'ACRILICO', 'nome_material': 'Acrilico_transparente', 'extrusao': 0.001, 'roughness': 0.001, 'transmission': 1.0, 'ior': 2 },
         
     # MDFs
-    '#fefefe': { 'tipo': 'MDF', 'nome_material': 'MDF_3mm', 'extrusao': 0.003, 'roughness': 0.1, 'transmission': 0.03, 'ior': 1.5},
-    '#e6e7e8': { 'tipo': 'MDF', 'nome_material': 'MDF_6mm', 'extrusao': 0.006, 'roughness': 0.1, 'transmission': 0.03, 'ior': 1.5},
-    '#d2d3d5': { 'tipo': 'MDF', 'nome_material': 'MDF_9mm', 'extrusao': 0.009, 'roughness': 0.1, 'transmission': 0.03, 'ior':1.5},
-    '#373435': { 'tipo': 'PLOTTER', 'nome_material': 'PLOTTER', 'extrusao': 0.0001, 'roughness': 0.1, 'transmission': 0.03, 'ior': 1.5},
+    '#fefefe': { 'tipo': 'MDF', 'nome_material': 'MDF_3mm', 'extrusao': 0.003, 'roughness': 0.1, 'transmission': 0.03, 'ior': 1.03},
+    '#e6e7e8': { 'tipo': 'MDF', 'nome_material': 'MDF_6mm', 'extrusao': 0.006, 'roughness': 0.1, 'transmission': 0.03, 'ior': 1.03},
+    '#d2d3d5': { 'tipo': 'MDF', 'nome_material': 'MDF_9mm', 'extrusao': 0.009, 'roughness': 0.1, 'transmission': 0.03, 'ior': 1.03},
+    '#373435': { 'tipo': 'PLOTTER', 'nome_material': 'PLOTTER', 'extrusao': 0.0001, 'roughness': 0.1, 'transmission': 0.03, 'ior': 1.03},
 
     # NOVO MATERIAL: MDF colocado nas costas do troféu (permanece plano/deitado)
     '#00afef': { 'tipo': 'MDF_COSTAS', 'nome_material': 'MDF_Costas_3mm', 'extrusao': 0.003, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.4 },
@@ -388,14 +388,33 @@ def aplicar_materiais_e_empilhar(elementos_mapeados, imagens_disponiveis, usar_v
                         bsdf.inputs[pino_cor].default_value = cor_escurecida
                     else:
                         bsdf.inputs[pino_cor].default_value = cor_svg
-            
-            roughness_final = 0.01 if (usar_verniz and tipo_material in ['MDF', 'MDF_COSTAS','BASE']) else regra['roughness']
-            if 'Roughness' in bsdf.inputs: bsdf.inputs['Roughness'].default_value = roughness_final
 
-            if tipo_material != 'ACRILICO':
-                if 'Transmission Weight' in bsdf.inputs: bsdf.inputs['Transmission Weight'].default_value = regra.get('transmission', 0.0)
-                elif 'Transmission' in bsdf.inputs: bsdf.inputs['Transmission'].default_value = regra.get('transmission', 0.0)
-                if 'IOR' in bsdf.inputs and 'ior' in regra: bsdf.inputs['IOR'].default_value = regra['ior']
+        # ---------------------------------------------------------------------
+        # CORREÇÃO: Força a atualização do verniz e IOR SEMPRE, 
+        # mesmo se o material já existia no arquivo .blend base.
+        # ---------------------------------------------------------------------
+
+        if mat and mat.use_nodes:
+            nodes = mat.node_tree.nodes
+            bsdf = nodes.get("Principled BSDF")
+            
+            if tipo_material == 'ACRILICO' and not bsdf:
+                bsdf = next((n for n in nodes if n.type == 'BSDF_GLOSSY'), None)
+
+            if bsdf:
+                roughness_final = 0.01 if (usar_verniz and tipo_material in ['MDF', 'MDF_COSTAS', 'BASE']) else regra['roughness']
+                
+                if 'Roughness' in bsdf.inputs: 
+                    bsdf.inputs['Roughness'].default_value = roughness_final
+
+                if tipo_material != 'ACRILICO':
+                    if 'Transmission Weight' in bsdf.inputs: 
+                        bsdf.inputs['Transmission Weight'].default_value = regra.get('transmission', 0.0)
+                    elif 'Transmission' in bsdf.inputs: 
+                        bsdf.inputs['Transmission'].default_value = regra.get('transmission', 0.0)
+                    
+                    if 'IOR' in bsdf.inputs and 'ior' in regra: 
+                        bsdf.inputs['IOR'].default_value = regra['ior']
 
         obj.data.materials.append(mat)
         bpy.context.view_layer.update()
