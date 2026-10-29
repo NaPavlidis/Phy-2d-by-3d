@@ -14,14 +14,14 @@ import threading
 
 REGRAS_MATERIAIS = {    
     # ACRÍLICOS
-    '#ed3237': { 'tipo': 'ACRILICO', 'nome_material': 'acrilico_padrão', 'extrusao': 0.001, 'roughness': 0.08, 'transmission': 1.0, 'ior': 1.8 },
-    '#fff212': { 'tipo': 'ACRILICO', 'nome_material': 'Acrilico_transparente', 'extrusao': 0.001, 'roughness': 0.08, 'transmission': 1.0, 'ior': 2 },
+    '#ed3237': { 'tipo': 'ACRILICO', 'nome_material': 'acrilico_padrão', 'extrusao': 0.001, 'roughness': 0.001, 'transmission': 1.0, 'ior': 1.8 },
+    '#fff212': { 'tipo': 'ACRILICO', 'nome_material': 'Acrilico_transparente', 'extrusao': 0.001, 'roughness': 0.001, 'transmission': 1.0, 'ior': 2 },
         
     # MDFs
-    '#fefefe': { 'tipo': 'MDF', 'nome_material': 'MDF_3mm', 'extrusao': 0.003, 'roughness': 0.1, 'transmission': 0.3, 'ior': 1.08},
-    '#e6e7e8': { 'tipo': 'MDF', 'nome_material': 'MDF_6mm', 'extrusao': 0.006, 'roughness': 0.1, 'transmission': 0.3, 'ior': 1.08},
-    '#d2d3d5': { 'tipo': 'MDF', 'nome_material': 'MDF_9mm', 'extrusao': 0.009, 'roughness': 0.1, 'transmission': 0.3, 'ior': 1.08},
-    '#373435': { 'tipo': 'PLOTTER', 'nome_material': 'PLOTTER', 'extrusao': 0.0001, 'roughness': 0.1, 'transmission': 0.3, 'ior': 1.08},
+    '#fefefe': { 'tipo': 'MDF', 'nome_material': 'MDF_3mm', 'extrusao': 0.003, 'roughness': 0.1, 'transmission': 0.03, 'ior': 1.5},
+    '#e6e7e8': { 'tipo': 'MDF', 'nome_material': 'MDF_6mm', 'extrusao': 0.006, 'roughness': 0.1, 'transmission': 0.03, 'ior': 1.5},
+    '#d2d3d5': { 'tipo': 'MDF', 'nome_material': 'MDF_9mm', 'extrusao': 0.009, 'roughness': 0.1, 'transmission': 0.03, 'ior':1.5},
+    '#373435': { 'tipo': 'PLOTTER', 'nome_material': 'PLOTTER', 'extrusao': 0.0001, 'roughness': 0.1, 'transmission': 0.03, 'ior': 1.5},
 
     # NOVO MATERIAL: MDF colocado nas costas do troféu (permanece plano/deitado)
     '#00afef': { 'tipo': 'MDF_COSTAS', 'nome_material': 'MDF_Costas_3mm', 'extrusao': 0.003, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.4 },
@@ -30,10 +30,10 @@ REGRAS_MATERIAIS = {
     '#00a859': { 'tipo': 'RESINA_AREA', 'nome_material': 'Area_Resina', 'extrusao': 0.0, 'roughness': 0.1, 'transmission': 0.2, 'ior': 1.3 },
 
     # BASES
-    "#f58634": { 'tipo': 'BASE', 'nome_material': 'Base_3MM', 'extrusao': 0.005, 'roughness': 0.1, 'transmission': 0.02, 'ior': 1.03},
-    "#3e4095": { 'tipo': 'BASE', 'nome_material': 'Base_6MM', 'extrusao': 0.01, 'roughness': 0.1, 'transmission': 0.02, 'ior': 1.03},
-    "#f7adaf": { 'tipo': 'BASE', 'nome_material': 'Base_9MM', 'extrusao': 0.015, 'roughness': 0.1, 'transmission': 0.02, 'ior': 1.03},
-    "#84716b": { 'tipo': 'BASE', 'nome_material': 'Base_12MM', 'extrusao': 0.12, 'roughness': 0.1, 'transmission': 0.02, 'ior': 1.03},
+    "#f58634": { 'tipo': 'BASE', 'nome_material': 'Base_3MM', 'extrusao': 0.005, 'roughness': 0.08, 'transmission': 0.02, 'ior': 1.03},
+    "#3e4095": { 'tipo': 'BASE', 'nome_material': 'Base_6MM', 'extrusao': 0.01, 'roughness': 0.08, 'transmission': 0.02, 'ior': 1.03},
+    "#f7adaf": { 'tipo': 'BASE', 'nome_material': 'Base_9MM', 'extrusao': 0.015, 'roughness': 0.08, 'transmission': 0.02, 'ior': 1.03},
+    "#84716b": { 'tipo': 'BASE', 'nome_material': 'Base_12MM', 'extrusao': 0.025, 'roughness': 0.08, 'transmission': 0.02, 'ior': 1.03},
     
     # ADESIVOS
     '#ec268f': { 'tipo': 'ADESIVO', 'nome_material': 'Adesivo_Padrao', 'extrusao': 0.0001, 'roughness': 0.05, 'transmission': 0.008, 'ior': 1.03 }
@@ -49,7 +49,7 @@ def hex_para_rgba(hex_color, alpha=1.0):
     if not hex_color or not hex_color.startswith('#'): return (1.0, 1.0, 1.0, alpha)
     hex_color = hex_color.lstrip('#').lower()
     r, g, b = int(hex_color[0:2], 16)/255.0, int(hex_color[2:4], 16)/255.0, int(hex_color[4:6], 16)/255.0
-    fator_cmyk = 0.50
+    fator_cmyk = 0.65
     r, g, b = r * fator_cmyk, g * fator_cmyk, b * fator_cmyk
     def srgb_para_linear(c): return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
     return (srgb_para_linear(r), srgb_para_linear(g), srgb_para_linear(b), alpha)
@@ -386,13 +386,10 @@ def aplicar_materiais_e_empilhar(elementos_mapeados, imagens_disponiveis, usar_v
                     if tipo_material == 'ADESIVO':
                         cor_escurecida = (cor_svg[0]*FATOR_ESCURECIMENTO_ADESIVO, cor_svg[1]*FATOR_ESCURECIMENTO_ADESIVO, cor_svg[2]*FATOR_ESCURECIMENTO_ADESIVO, cor_svg[3])
                         bsdf.inputs[pino_cor].default_value = cor_escurecida
-                    elif tipo_material == 'ADESIVO':
-                        cor_escurecida = (cor_svg[0]*FATOR_ESCURECIMENTO_ADESIVO, cor_svg[1]*FATOR_ESCURECIMENTO_ADESIVO, cor_svg[2]*FATOR_ESCURECIMENTO_ADESIVO, cor_svg[3])
-                        bsdf.inputs[pino_cor].default_value = cor_escurecida
                     else:
                         bsdf.inputs[pino_cor].default_value = cor_svg
             
-            roughness_final = 0.03 if (usar_verniz and tipo_material in ['MDF', 'MDF_COSTAS',"base"]) else regra['roughness']
+            roughness_final = 0.01 if (usar_verniz and tipo_material in ['MDF', 'MDF_COSTAS','BASE']) else regra['roughness']
             if 'Roughness' in bsdf.inputs: bsdf.inputs['Roughness'].default_value = roughness_final
 
             if tipo_material != 'ACRILICO':
@@ -877,7 +874,7 @@ if __name__ == "__main__":
             try: cycles_samples = int(argv[5])
             except: cycles_samples = 128
             
-        usar_verniz = False
+        usar_verniz = True
         if len(argv) > 6: usar_verniz = argv[6].strip().lower() in ['true', '1', 'yes']
             
         caminho_modelo_resina = ""
