@@ -402,16 +402,16 @@ def aplicar_materiais_e_empilhar(elementos_mapeados, imagens_disponiveis, usar_v
                 bsdf = next((n for n in nodes if n.type == 'BSDF_GLOSSY'), None)
 
             if bsdf:
-                roughness_final = 0.03 if (usar_verniz and tipo_material in ['MDF', 'MDF_COSTAS', 'BASE']) else regra['roughness']
+                roughness_final = 0.015 if (usar_verniz and tipo_material in ['MDF', 'MDF_COSTAS', 'BASE']) else regra['roughness']
                 
                 if 'Roughness' in bsdf.inputs: 
                     bsdf.inputs['Roughness'].default_value = roughness_final
 
                 if tipo_material != 'ACRILICO':
                     if 'Transmission Weight' in bsdf.inputs: 
-                        bsdf.inputs['Transmission Weight'].default_value = regra.get('transmission', 0.0)
+                        bsdf.inputs['Transmission Weight'].default_value = regra.get('transmission', 0.3)
                     elif 'Transmission' in bsdf.inputs: 
-                        bsdf.inputs['Transmission'].default_value = regra.get('transmission', 0.0)
+                        bsdf.inputs['Transmission'].default_value = regra.get('transmission', 0.3)  
                     
                     if 'IOR' in bsdf.inputs and 'ior' in regra: 
                         bsdf.inputs['IOR'].default_value = regra['ior']
@@ -764,7 +764,7 @@ def configurar_cameras(objetos_importados):
     tamanho_real = max(tamanho_z, tamanho_x / aspect_ratio) if aspect_ratio > 1 else max(tamanho_x, tamanho_z * aspect_ratio)
     
     # MARGEM DE ENQUADRAMENTO: 1.22 deixa o troféu bem próximo e preenchendo a tela do render
-    MARGEM_ENQUADRAMENTO = 1.6
+    MARGEM_ENQUADRAMENTO = 1.5
     distancia_base = (tamanho_real / 2.0) / math.tan(fov / 2.0) * MARGEM_ENQUADRAMENTO
 
     ponto_focal_alvo = alvo_centro.copy()   
