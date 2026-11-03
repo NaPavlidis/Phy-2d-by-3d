@@ -27,7 +27,7 @@ REGRAS_MATERIAIS = {
     '#00afef': { 'tipo': 'MDF_COSTAS', 'nome_material': 'MDF_Costas_3mm', 'extrusao': 0.003, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.4 },
 
     # RESINA (Área guia sem extrusão)
-    '#00a859': { 'tipo': 'RESINA_AREA', 'nome_material': 'Area_Resina', 'extrusao': 0.0, 'roughness': 0.1, 'transmission': 0.2, 'ior': 1.3 },
+    '#00a859': { 'tipo': 'RESINA_AREA', 'nome_material': 'Area_Resina', 'extrusao': 0.0, 'roughness': 0.2   , 'transmission': 0.5, 'ior': 1.10 },
 
     # BASES
     "#f58634": { 'tipo': 'BASE', 'nome_material': 'Base_3MM', 'extrusao': 0.005, 'roughness': 0.08, 'transmission': 0.02, 'ior': 1.03},
@@ -409,9 +409,9 @@ def aplicar_materiais_e_empilhar(elementos_mapeados, imagens_disponiveis, usar_v
 
                 if tipo_material != 'ACRILICO':
                     if 'Transmission Weight' in bsdf.inputs: 
-                        bsdf.inputs['Transmission Weight'].default_value = regra.get('transmission', 0.3)
+                        bsdf.inputs['Transmission Weight'].default_value = regra.get('transmission', 0.15)
                     elif 'Transmission' in bsdf.inputs: 
-                        bsdf.inputs['Transmission'].default_value = regra.get('transmission', 0.3)  
+                        bsdf.inputs['Transmission'].default_value = regra.get('transmission', 0.15)  
                     
                     if 'IOR' in bsdf.inputs and 'ior' in regra: 
                         bsdf.inputs['IOR'].default_value = regra['ior']
