@@ -14,7 +14,7 @@ import threading
 
 REGRAS_MATERIAIS = {    
     # ACRÍLICOS
-    '#ed3237': { 'tipo': 'ACRILICO', 'nome_material': 'acrilico_padrão', 'extrusao': 0.001, 'roughness': 0.001, 'transmission': 1.0, 'ior': 1.8 },
+    '#ed3237': { 'tipo': 'ACRILICO', 'nome_material': 'acrilico_padrão', 'extrusao': 0.001, 'roughness': 0.001, 'transmission': 1.0, 'ior': 1.9 },
     '#fff212': { 'tipo': 'ACRILICO', 'nome_material': 'Acrilico_transparente', 'extrusao': 0.001, 'roughness': 0.001, 'transmission': 1.0, 'ior': 2 },
         
     # MDFs
