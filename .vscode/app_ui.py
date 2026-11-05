@@ -389,7 +389,7 @@ class VectorConvertProApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("VectorConvert Pro")
-        self.geometry("1150x780")
+        self.geometry("1150x820")
         self.configure(bg="#0B0F17")
 
         # Configurações Padrão
@@ -411,6 +411,11 @@ class VectorConvertProApp(tk.Tk):
         self.usar_textura_var = tk.BooleanVar(value=True)
         self.usar_verniz_var = tk.BooleanVar(value=False)
         self.modelo_resina_selecionado = tk.StringVar(value="Nenhum")
+
+        # SELEÇÃO DE CÂMERAS (Padrão: Todas 3 ativadas)
+        self.cam_principal_var = tk.BooleanVar(value=True)
+        self.cam_esquerda_var = tk.BooleanVar(value=True)
+        self.cam_direita_var = tk.BooleanVar(value=True)
 
         self.sidebar_buttons = {}
         self.screens = {}
@@ -462,6 +467,13 @@ class VectorConvertProApp(tk.Tk):
                 json.dump(dados, f, indent=4)
         except Exception as e:
             print(f"Erro ao salvar configurações no disco: {e}")
+
+    def _obter_cameras_selecionadas_str(self):
+        cams = []
+        if self.cam_principal_var.get(): cams.append("Camera_Principal")
+        if self.cam_esquerda_var.get(): cams.append("Camera_Esquerda")
+        if self.cam_direita_var.get(): cams.append("Camera_Direita")
+        return ",".join(cams)
 
     def _build_navbar(self):
         navbar = tk.Frame(self, bg="#0F141C", height=50, padx=20, pady=10)
@@ -564,6 +576,23 @@ class VectorConvertProApp(tk.Tk):
         chk_render = tk.Checkbutton(card_left, text="Renderizar automaticamente no Blender", variable=self.render_auto_var, fg="#A0AEC0", bg="#121824", selectcolor="#080C14", activebackground="#121824", font=("Helvetica", 9))
         chk_render.pack(pady=2, anchor="w", padx=20)
 
+        # SELEÇÃO DAS CÂMERAS
+        frame_cams = tk.Frame(card_left, bg="#121824")
+        frame_cams.pack(fill="x", padx=20, pady=(5, 5))
+        tk.Label(frame_cams, text="📷 Câmeras a Renderizar:", fg="#38BDF8", bg="#121824", font=("Helvetica", 9, "bold")).pack(anchor="w", pady=(0, 2))
+        
+        sub_cams = tk.Frame(frame_cams, bg="#121824")
+        sub_cams.pack(anchor="w")
+
+        chk_cam_p = tk.Checkbutton(sub_cams, text="Principal", variable=self.cam_principal_var, fg="#A0AEC0", bg="#121824", selectcolor="#080C14", activebackground="#121824", font=("Helvetica", 9))
+        chk_cam_p.pack(side="left", padx=(0, 8))
+
+        chk_cam_e = tk.Checkbutton(sub_cams, text="Esquerda", variable=self.cam_esquerda_var, fg="#A0AEC0", bg="#121824", selectcolor="#080C14", activebackground="#121824", font=("Helvetica", 9))
+        chk_cam_e.pack(side="left", padx=(0, 8))
+
+        chk_cam_d = tk.Checkbutton(sub_cams, text="Direita", variable=self.cam_direita_var, fg="#A0AEC0", bg="#121824", selectcolor="#080C14", activebackground="#121824", font=("Helvetica", 9))
+        chk_cam_d.pack(side="left")
+
         chk_textura = tk.Checkbutton(card_left, text="Aplicar texturas (madeira no MDF)", variable=self.usar_textura_var, fg="#A0AEC0", bg="#121824", selectcolor="#080C14", activebackground="#121824", font=("Helvetica", 9))
         chk_textura.pack(pady=2, anchor="w", padx=20)
 
@@ -578,7 +607,7 @@ class VectorConvertProApp(tk.Tk):
         self.menu_resina.pack(fill="x", pady=2)
         self._atualizar_hud_resina()
 
-        # Botão Próximo para avançar
+        # Botão Próximo
         btn_proximo = tk.Button(
             card_left, text="Próximo ➔", fg="#FFFFFF", bg="#38BDF8", bd=0, padx=20, pady=10, 
             font=("Helvetica", 10, "bold"), command=self._avancar_para_processamento
@@ -612,6 +641,10 @@ class VectorConvertProApp(tk.Tk):
     def _avancar_para_processamento(self):
         if not self.svg_selecionado or not os.path.exists(self.svg_selecionado):
             messagebox.showwarning("Atenção", "Por favor, selecione um arquivo SVG antes de prosseguir.")
+            return
+
+        if self.render_auto_var.get() and not (self.cam_principal_var.get() or self.cam_esquerda_var.get() or self.cam_direita_var.get()):
+            messagebox.showwarning("Atenção", "Por favor, selecione pelo menos uma câmera para renderizar.")
             return
 
         self.lbl_status_processamento.configure(text="🔄 Iniciando importação e montagem de malhas...")
@@ -657,7 +690,6 @@ class VectorConvertProApp(tk.Tk):
         tk.Label(header, text="📊 Mapeamento do Catálogo de Troféus", fg="#38BDF8", bg="#121824", font=("Helvetica", 14, "bold")).pack(side="left")
         tk.Button(header, text="🔄 Atualizar Catálogo", bg="#1E2638", fg="#FFFFFF", bd=0, padx=12, pady=6, font=("Helvetica", 9, "bold"), command=self._atualizar_relatorio_catalogo).pack(side="right")
 
-        # Cor alterada para #34D399 (mesma cor da caixa de Análise do SVG)
         self.txt_catalogo = tk.Text(card, bg="#080C14", fg="#34D399", font=("Consolas", 9), bd=0, padx=15, pady=15)
         scrollbar = ttk.Scrollbar(card, command=self.txt_catalogo.yview)
         self.txt_catalogo.configure(yscrollcommand=scrollbar.set)
@@ -736,6 +768,8 @@ class VectorConvertProApp(tk.Tk):
         if resina_escolhida and not resina_escolhida.startswith("Nenhum"):
             caminho_resina_completo = os.path.join(self.resina_dir, resina_escolhida)
 
+        cams_str = self._obter_cameras_selecionadas_str()
+
         comando = [self.blender_path]
 
         if self.render_auto_var.get():
@@ -751,7 +785,8 @@ class VectorConvertProApp(tk.Tk):
             str(self.usar_textura_var.get()),
             str(self.cycles_samples),
             str(self.usar_verniz_var.get()),
-            caminho_resina_completo
+            caminho_resina_completo,
+            cams_str
         ])
 
         try:
