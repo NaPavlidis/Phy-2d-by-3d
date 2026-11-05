@@ -2,7 +2,7 @@ import bpy
 import xml.etree.ElementTree as ET
 import re
 import os
-import mathutils  # type: ignore[reportMissingImports]  # Provided by Blender's Python runtime.
+import mathutils  # type: ignore[reportMissingImports]
 import math 
 import sys
 import shutil
@@ -389,30 +389,23 @@ def aplicar_materiais_e_empilhar(elementos_mapeados, imagens_disponiveis, usar_v
                     else:
                         bsdf.inputs[pino_cor].default_value = cor_svg
 
-        # ---------------------------------------------------------------------
-        # CORREÇÃO: Força a atualização do verniz e IOR SEMPRE, 
-        # mesmo se o material já existia no arquivo .blend base.
-        # ---------------------------------------------------------------------
-
+        # Atualiza propriedades físicas em materiais novos ou reutilizados
         if mat and mat.use_nodes:
             nodes = mat.node_tree.nodes
             bsdf = nodes.get("Principled BSDF")
-            
             if tipo_material == 'ACRILICO' and not bsdf:
                 bsdf = next((n for n in nodes if n.type == 'BSDF_GLOSSY'), None)
 
             if bsdf:
-                roughness_final = 0.015 if (usar_verniz and tipo_material in ['MDF', 'MDF_COSTAS', 'BASE']) else regra['roughness']
-                
+                roughness_final = 0.01 if (usar_verniz and tipo_material in ['MDF', 'MDF_COSTAS', 'BASE']) else regra['roughness']
                 if 'Roughness' in bsdf.inputs: 
                     bsdf.inputs['Roughness'].default_value = roughness_final
 
                 if tipo_material != 'ACRILICO':
                     if 'Transmission Weight' in bsdf.inputs: 
-                        bsdf.inputs['Transmission Weight'].default_value = regra.get('transmission', 0.15)
+                        bsdf.inputs['Transmission Weight'].default_value = regra.get('transmission', 0.0)
                     elif 'Transmission' in bsdf.inputs: 
-                        bsdf.inputs['Transmission'].default_value = regra.get('transmission', 0.15)  
-                    
+                        bsdf.inputs['Transmission'].default_value = regra.get('transmission', 0.0)
                     if 'IOR' in bsdf.inputs and 'ior' in regra: 
                         bsdf.inputs['IOR'].default_value = regra['ior']
 
@@ -694,23 +687,17 @@ def processar_resina_3d(elementos_mapeados, suporte_dos_objetos, caminho_modelo_
 
 def configurar_cameras(objetos_importados):
     """Posiciona iluminação e câmeras automaticamente focando estritamente nas malhas do troféu e da resina."""
-    
-    # 1. Filtra estritamente as malhas que pertencem ao troféu/resina 
-    # (Descarta objetos de cenário, chão e paredes do estúdio base)
     objetos_validos_cena = []
     
-    # Tenta usar a lista de objetos importados/criados no fluxo
     for obj in objetos_importados:
         try:
             if obj and hasattr(obj, "name") and obj.name in bpy.data.objects and obj.type == 'MESH':
-                # Evita pegar malhas do estúdio
                 nome_lc = obj.name.lower()
                 if not any(ign in nome_lc for ign in ["estudio", "chao", "ground", "studio", "wall", "fundo", "cenario"]):
                     objetos_validos_cena.append(obj)
         except (ReferenceError, RuntimeError):
             continue
 
-    # Fallback: Se a lista direta falhar, busca na cena apenas malhas do troféu
     if not objetos_validos_cena:
         for obj in bpy.context.scene.objects:
             try:
@@ -734,7 +721,6 @@ def configurar_cameras(objetos_importados):
     min_x = min_y = min_z = float('inf')
     max_x = max_y = max_z = float('-inf')
 
-    # 2. Varredura das coordenadas extremas reais APENAS das peças do troféu
     for obj in objetos_validos_cena:
         try:
             for v in obj.bound_box:
@@ -752,7 +738,6 @@ def configurar_cameras(objetos_importados):
         print("⚠️ Não foi possível calcular o centro dos objetos.", flush=True)
         return []
 
-    # 3. Ponto focal central e dimensões reais do troféu
     alvo_centro = mathutils.Vector(((min_x + max_x) / 2.0, (min_y + max_y) / 2.0, (min_z + max_z) / 2.0))
     tamanho_x, tamanho_y, tamanho_z = max_x - min_x, max_y - min_y, max_z - min_z
 
@@ -760,18 +745,15 @@ def configurar_cameras(objetos_importados):
     fov = dummy_cam_data.angle
     bpy.data.cameras.remove(dummy_cam_data)
 
-    # Considera a proporção vertical 4x5
     tamanho_real = max(tamanho_z, tamanho_x / aspect_ratio) if aspect_ratio > 1 else max(tamanho_x, tamanho_z * aspect_ratio)
     
-    # MARGEM DE ENQUADRAMENTO: 1.22 deixa o troféu bem próximo e preenchendo a tela do render
-    MARGEM_ENQUADRAMENTO = 1.5
+    MARGEM_ENQUADRAMENTO = 1.6
     distancia_base = (tamanho_real / 2.0) / math.tan(fov / 2.0) * MARGEM_ENQUADRAMENTO
 
     ponto_focal_alvo = alvo_centro.copy()   
-    ponto_focal_alvo.z += tamanho_z * 0.00  # Foco levemente acima do centro geométrico
-    altura_camera = alvo_centro.z + (tamanho_z * 0.15)  # Elevação suave da lente
+    ponto_focal_alvo.z += tamanho_z * 0.00  
+    altura_camera = alvo_centro.z + (tamanho_z * 0.15)  
 
-    # 4. Criando e apontando as 3 câmeras
     def criar_e_apontar_camera(nome, local_vetor, focal_vetor):
         cam_obj = bpy.data.objects.get(nome)
         if not cam_obj:
@@ -808,7 +790,7 @@ def configurar_cameras(objetos_importados):
     return ["Camera_Principal", "Camera_Esquerda", "Camera_Direita"]
 
 def renderizar_cena(cameras_nomes, pasta_saida_renders, cycles_samples):
-    """Configura o Cycles e roda os Renders para cada câmera."""
+    """Configura o Cycles e roda os Renders para as câmeras selecionadas."""
     pasta_dest = pasta_saida_renders
     if not os.path.exists(pasta_dest): os.makedirs(pasta_dest)
     
@@ -854,7 +836,17 @@ def renderizar_cena(cameras_nomes, pasta_saida_renders, cycles_samples):
 # 4. FUNÇÃO PRINCIPAL (ORQUESTRADOR)
 # ==============================================================================
 
-def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="", renderizar=True, usar_textura=True, cycles_samples=128, usar_verniz=False, caminho_modelo_resina=""):
+def processar_svg_no_blender(
+    caminho_svg, 
+    pasta_saida_renders, 
+    caminho_blend="", 
+    renderizar=True, 
+    usar_textura=True, 
+    cycles_samples=128, 
+    usar_verniz=False, 
+    caminho_modelo_resina="",
+    cameras_para_renderizar=None
+):
     
     carregar_estudio_e_hdri(caminho_blend)
     caminho_temp, dados_extraidos, imagens_disponiveis = analisar_e_preparar_svg(caminho_svg)
@@ -869,10 +861,25 @@ def processar_svg_no_blender(caminho_svg, pasta_saida_renders, caminho_blend="",
 
     cameras_nomes = configurar_cameras(objetos_importados)
 
-    if renderizar and pasta_saida_renders and cameras_nomes:
-        renderizar_cena(cameras_nomes, pasta_saida_renders, cycles_samples)
+    # --- FILTRAGEM DAS CÂMERAS ---
+    if cameras_para_renderizar:
+        if isinstance(cameras_para_renderizar, str):
+            if cameras_para_renderizar.strip().lower() in ['todas', 'all', '']:
+                cameras_filtradas = cameras_nomes
+            else:
+                lista_desejada = [c.strip() for c in cameras_para_renderizar.split(',')]
+                cameras_filtradas = [c for c in cameras_nomes if c in lista_desejada]
+        elif isinstance(cameras_para_renderizar, (list, tuple)):
+            cameras_filtradas = [c for c in cameras_nomes if c in cameras_para_renderizar]
+        else:
+            cameras_filtradas = cameras_nomes
     else:
-        print(">>> Modo interativo ativo: O Blender permaneceu aberto com o troféu montado.", flush=True)
+        cameras_filtradas = cameras_nomes
+
+    if renderizar and pasta_saida_renders and cameras_filtradas:
+        renderizar_cena(cameras_filtradas, pasta_saida_renders, cycles_samples)
+    else:
+        print(">>> Modo interativo ativo ou nenhuma câmera válida foi selecionada.", flush=True)
 
 
 if __name__ == "__main__":
@@ -898,5 +905,20 @@ if __name__ == "__main__":
             
         caminho_modelo_resina = ""
         if len(argv) > 7: caminho_modelo_resina = argv[7]
+
+        # 8º Argumento Opcional: Câmeras a renderizar (Ex: "Camera_Principal" ou "Camera_Principal,Camera_Esquerda")
+        cameras_para_renderizar = None
+        if len(argv) > 8 and argv[8].strip():
+            cameras_para_renderizar = argv[8]
             
-        processar_svg_no_blender(caminho_svg, pasta_saida, caminho_blend, renderizar_automaticamente, usar_textura, cycles_samples, usar_verniz, caminho_modelo_resina)
+        processar_svg_no_blender(
+            caminho_svg, 
+            pasta_saida, 
+            caminho_blend, 
+            renderizar_automaticamente, 
+            usar_textura, 
+            cycles_samples, 
+            usar_verniz, 
+            caminho_modelo_resina,
+            cameras_para_renderizar
+        )
