@@ -27,7 +27,7 @@ REGRAS_MATERIAIS = {
     '#00afef': { 'tipo': 'MDF_COSTAS', 'nome_material': 'MDF_Costas_3mm', 'extrusao': 0.003, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.4 },
 
     # RESINA (Área guia sem extrusão)
-    '#00a859': { 'tipo': 'RESINA_AREA', 'nome_material': 'Area_Resina', 'extrusao': 0.0, 'roughness': 0.2   , 'transmission': 0.5, 'ior': 1.10 },
+    '#00a859': { 'tipo': 'RESINA_AREA', 'nome_material': 'Area_Resina', 'extrusao': 0.0, 'roughness': 0.2 , 'transmission': 0.5, 'ior': 1.10 },
 
     # BASES
     "#f58634": { 'tipo': 'BASE', 'nome_material': 'Base_3MM', 'extrusao': 0.005, 'roughness': 0.08, 'transmission': 0.02, 'ior': 1.03},
@@ -36,7 +36,7 @@ REGRAS_MATERIAIS = {
     "#84716b": { 'tipo': 'BASE', 'nome_material': 'Base_12MM', 'extrusao': 0.025, 'roughness': 0.08, 'transmission': 0.02, 'ior': 1.03},    
     
     # ADESIVOS
-    '#ec268f': { 'tipo': 'ADESIVO', 'nome_material': 'Adesivo_Padrao', 'extrusao': 0.0001, 'roughness': 0.05, 'transmission': 0.008, 'ior': 1.03 }
+    '#ec268f': { 'tipo': 'ADESIVO', 'nome_material': 'Adesivo_Padrao', 'extrusao': 0.0001, 'roughness': 0.04, 'transmission': 0.02, 'ior': 1.08 }
 }
 
 FATOR_ESCURECIMENTO_ADESIVO = 0.25
