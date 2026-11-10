@@ -7,6 +7,7 @@ import math
 import sys
 import shutil
 import threading
+import time
 
 # ==============================================================================
 # 1. CONFIGURAÇÕES E REGRAS GERAIS
@@ -18,20 +19,20 @@ REGRAS_MATERIAIS = {
     '#fff212': { 'tipo': 'ACRILICO', 'nome_material': 'Acrilico_transparente', 'extrusao': 0.001, 'roughness': 0.001, 'transmission': 1.0, 'ior': 2 },
         
     # MDFs
-    '#fefefe': { 'tipo': 'MDF', 'nome_material': 'MDF_3mm', 'extrusao': 0.003, 'roughness': 0.05, 'transmission': 0.03, 'ior': 1.10},
-    '#e6e7e8': { 'tipo': 'MDF', 'nome_material': 'MDF_6mm', 'extrusao': 0.006, 'roughness': 0.05, 'transmission': 0.03, 'ior': 1.10},
-    '#d2d3d5': { 'tipo': 'MDF', 'nome_material': 'MDF_9mm', 'extrusao': 0.009, 'roughness': 0.05, 'transmission': 0.03, 'ior': 1.10},
+    '#fefefe': { 'tipo': 'MDF', 'nome_material': 'MDF_3mm', 'extrusao': 0.003, 'roughness': 0.55, 'transmission': 0.03, 'ior': 1.10},
+    '#e6e7e8': { 'tipo': 'MDF', 'nome_material': 'MDF_6mm', 'extrusao': 0.006, 'roughness': 0.55, 'transmission': 0.03, 'ior': 1.10},
+    '#d2d3d5': { 'tipo': 'MDF', 'nome_material': 'MDF_9mm', 'extrusao': 0.009, 'roughness': 0.55, 'transmission': 0.03, 'ior': 1.10},
     '#373435': { 'tipo': 'PLOTTER', 'nome_material': 'PLOTTER', 'extrusao': 0.0001, 'roughness': 0.05, 'transmission': 0.03, 'ior': 1.10},
 
-    # NOVO MATERIAL: MDF colocado nas costas do troféu (permanece plano/deitado)
-    '#00afef': { 'tipo': 'MDF_COSTAS', 'nome_material': 'MDF_Costas_3mm', 'extrusao': 0.003, 'roughness': 0.08, 'transmission': 0.2, 'ior': 1.4 },
+    # MDF COSTAS (permanece plano/deitado)
+    '#00afef': { 'tipo': 'MDF_COSTAS', 'nome_material': 'MDF_Costas_3mm', 'extrusao': 0.003, 'roughness': 0.55, 'transmission': 0.2, 'ior': 1.4 },
 
     # RESINA (Área guia sem extrusão)
     '#00a859': { 'tipo': 'RESINA_AREA', 'nome_material': 'Area_Resina', 'extrusao': 0.0, 'roughness': 0.2 , 'transmission': 0.5, 'ior': 1.10 },
 
     # BASES
-    "#f58634": { 'tipo': 'BASE', 'nome_material': 'Base_3MM', 'extrusao': 0.005, 'roughness': 0.08, 'transmission': 0.02, 'ior': 1.03},
-    "#3e4095": { 'tipo': 'BASE', 'nome_material': 'Base_6MM', 'extrusao': 0.01, 'roughness': 0.08, 'transmission': 0.02, 'ior': 1.03},
+    "#f58634": { 'tipo': 'BASE', 'nome_material': 'Base_3MM', 'extrusao': 0.003, 'roughness': 0.08, 'transmission': 0.02, 'ior': 1.03},
+    "#3e4095": { 'tipo': 'BASE', 'nome_material': 'Base_6MM', 'extrusao': 0.009, 'roughness': 0.08, 'transmission': 0.02, 'ior': 1.03},
     "#f7adaf": { 'tipo': 'BASE', 'nome_material': 'Base_9MM', 'extrusao': 0.015, 'roughness': 0.08, 'transmission': 0.02, 'ior': 1.03},
     "#84716b": { 'tipo': 'BASE', 'nome_material': 'Base_12MM', 'extrusao': 0.025, 'roughness': 0.08, 'transmission': 0.02, 'ior': 1.03},    
     
@@ -41,17 +42,30 @@ REGRAS_MATERIAIS = {
 
 FATOR_ESCURECIMENTO_ADESIVO = 0.25
 
+# Cor padrão para MDF quando não houver preenchimento especificado no SVG (MDF Cru / Madeira)
+COR_PADRAO_MDF_HEX = '#5c4033'
+
 # ==============================================================================
 # 2. FUNÇÕES AUXILIARES
 # ==============================================================================
 
 def hex_para_rgba(hex_color, alpha=1.0):
-    if not hex_color or not hex_color.startswith('#'): return (1.0, 1.0, 1.0, alpha)
+    if not hex_color or not hex_color.startswith('#'): 
+        return (0.36, 0.25, 0.20, alpha) # Fallback seguro tom MDF cru
     hex_color = hex_color.lstrip('#').lower()
-    r, g, b = int(hex_color[0:2], 16)/255.0, int(hex_color[2:4], 16)/255.0, int(hex_color[4:6], 16)/255.0
-    fator_cmyk = 0.65
+    if len(hex_color) == 3:
+        hex_color = f"{hex_color[0]*2}{hex_color[1]*2}{hex_color[2]*2}"
+    
+    r = int(hex_color[0:2], 16) / 255.0
+    g = int(hex_color[2:4], 16) / 255.0
+    b = int(hex_color[4:6], 16) / 255.0
+    
+    fator_cmyk = 0.70
     r, g, b = r * fator_cmyk, g * fator_cmyk, b * fator_cmyk
-    def srgb_para_linear(c): return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+    
+    def srgb_para_linear(c): 
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+        
     return (srgb_para_linear(r), srgb_para_linear(g), srgb_para_linear(b), alpha)
 
 def obter_caixa_de_colisao(obj):
@@ -77,12 +91,88 @@ def criar_uv_perfeito(obj):
         v_uv = (v.co.y - min_y) / altura
         uv_layer[loop.index].uv = (u, v_uv)
 
+def aplicar_textura_mdf_procedural(mat, cor_preenchimento_rgba):
+    """
+    Aplica a textura procedural de MDF cru com fibras visíveis e relevo tátil,
+    sem clarear excessivamente e sem alterar a matiz da cor base.
+    """
+    mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+    links = mat.node_tree.links
+    nodes.clear()
+
+    # 1. Output e BSDF Principal
+    output_node = nodes.new('ShaderNodeOutputMaterial')
+    output_node.location = (500, 0)
+
+    bsdf = nodes.new('ShaderNodeBsdfPrincipled')
+    bsdf.location = (200, 0)
+    links.new(bsdf.outputs['BSDF'], output_node.inputs['Surface'])
+
+    # O MDF cru possui superfície fosca e rugosa
+    bsdf.inputs['Roughness'].default_value = 0.75
+
+    # 2. Coordenadas de Textura 3D (Object Space)
+    tex_coord = nodes.new('ShaderNodeTexCoord')
+    tex_coord.location = (-1200, 0)
+
+    mapping = nodes.new('ShaderNodeMapping')
+    mapping.location = (-1000, 0)
+    # ESCALA CORRIGIDA: 150.0 faz os veios da madeira ficarem do tamanho real do troféu
+    mapping.inputs['Scale'].default_value = (150.0, 150.0, 150.0)
+    links.new(tex_coord.outputs['Object'], mapping.inputs['Vector'])
+
+    # 3. Ruído Procedural (Granulação de Fibra)
+    noise_node = nodes.new('ShaderNodeTexNoise')
+    noise_node.location = (-750, 100)
+    noise_node.inputs['Scale'].default_value = 60.0
+    noise_node.inputs['Detail'].default_value = 15.0
+    noise_node.inputs['Roughness'].default_value = 0.85
+    noise_node.inputs['Distortion'].default_value = 0.3
+    links.new(mapping.outputs['Vector'], noise_node.inputs['Vector'])
+
+    # 4. ColorRamp em Escala de Cinza Escura (Controle estrito de luminosidade)
+    color_ramp = nodes.new('ShaderNodeValToRGB')
+    color_ramp.location = (-500, 100)
+    
+    # Define o escurecimento das fibras sem estourar no branco
+    color_ramp.color_ramp.elements[0].position = 0.10
+    color_ramp.color_ramp.elements[0].color = (0.20, 0.20, 0.20, 1.0) # Variação mais escura (20% cinza)
+    
+    color_ramp.color_ramp.elements[1].position = 0.80
+    color_ramp.color_ramp.elements[1].color = (0.75, 0.75, 0.75, 1.0) # Variação máxima controlada (75% cinza)
+    
+    links.new(noise_node.outputs['Fac'], color_ramp.inputs['Fac'])
+
+    # 5. Mix Multiply (Multiplica a variação de cinza pela cor original lida)
+    mix_node = nodes.new('ShaderNodeMix')
+    mix_node.data_type = 'RGBA'
+    mix_node.blend_type = 'MULTIPLY'
+    mix_node.location = (-200, 100)
+    
+    input_fac = mix_node.inputs.get('Factor', mix_node.inputs[0])
+    input_a = mix_node.inputs.get('A', mix_node.inputs[6])
+    input_b = mix_node.inputs.get('B', mix_node.inputs[7])
+    saida_mix = mix_node.outputs.get('Result', mix_node.outputs[2])
+
+    input_fac.default_value = 0.90
+    links.new(color_ramp.outputs['Color'], input_a)
+    input_b.default_value = cor_preenchimento_rgba
+    links.new(saida_mix, bsdf.inputs['Base Color'])
+
+    # 6. Relevo Tátil (Bump de Fibras)
+    bump_node = nodes.new('ShaderNodeBump')
+    bump_node.location = (-200, -200)
+    bump_node.inputs['Strength'].default_value = 0.40 # Intensifica as micro-sombras táticas
+    bump_node.inputs['Distance'].default_value = 0.002
+    links.new(noise_node.outputs['Fac'], bump_node.inputs['Height'])
+    links.new(bump_node.outputs['Normal'], bsdf.inputs['Normal'])
+    
 # ==============================================================================
 # 3. MÓDULOS DE PROCESSAMENTO
 # ==============================================================================
 
 def carregar_estudio_e_hdri(caminho_blend):
-    """Carrega o arquivo de estúdio base e conserta os nós de HDRI do mundo."""
     if caminho_blend and os.path.exists(caminho_blend):
         print(f">>> Carregando estúdio base: {caminho_blend}", flush=True)
         bpy.ops.wm.open_mainfile(filepath=caminho_blend)
@@ -111,7 +201,6 @@ def carregar_estudio_e_hdri(caminho_blend):
             bpy.context.evaluated_depsgraph_get().update()
 
 def analisar_e_preparar_svg(caminho_svg):
-    """Lê o SVG, limpa tags incompatíveis, extrai dados de cor e salva um SVG temporário."""
     print(f">>> Analisando e importando o arquivo SVG...", flush=True)
     ET.register_namespace('', "http://www.w3.org/2000/svg")
     try:
@@ -166,7 +255,13 @@ def analisar_e_preparar_svg(caminho_svg):
                     id_obj = f"trofeu_shape_{contador}"
                     filho.set('id', id_obj)
                     contador += 1
-                    dados_extraidos[id_obj] = {'contorno': cor_contorno, 'preenchimento': fill if fill else 'Nenhum'}
+                    
+                    cor_fill_real = fill.strip() if fill and fill.strip() not in ['none', ''] else 'Nenhum'
+                    dados_extraidos[id_obj] = {
+                        'contorno': cor_contorno, 
+                        'preenchimento': cor_fill_real
+                    }
+                    
                     filho.set('fill', '#ffffff') 
                     if 'stroke' in filho.attrib: del filho.attrib['stroke']
                     if 'stroke-width' in filho.attrib: del filho.attrib['stroke-width']
@@ -202,7 +297,6 @@ def analisar_e_preparar_svg(caminho_svg):
     return caminho_temp, dados_extraidos, imagens_disponiveis
 
 def importar_e_converter_svg(caminho_temp):
-    """Importa o SVG para o Blender e converte as Curvas em Malhas 3D (Mesh)."""
     objetos_antes = set(bpy.context.scene.objects)
     bpy.ops.object.select_all(action='DESELECT')
     bpy.ops.import_curve.svg(filepath=caminho_temp)
@@ -236,7 +330,6 @@ def importar_e_converter_svg(caminho_temp):
     return malhas_convertidas
 
 def mapear_e_ordenar_elementos(objetos_importados, dados_extraidos):
-    """Associa as regras de material aos objetos e os ordena (Bases primeiro)."""
     def obter_id_numerico(obj):
         match = re.search(r'trofeu_shape_(\d+)', obj.name)
         return int(match.group(1)) if match else 9999
@@ -246,7 +339,7 @@ def mapear_e_ordenar_elementos(objetos_importados, dados_extraidos):
         num_id = obter_id_numerico(obj)
         nome_base = f"trofeu_shape_{num_id}" if num_id != 9999 else f"trofeu_shape_{idx+1}"
         
-        dados = dados_extraidos.get(nome_base, {'contorno': '#fefefe', 'preenchimento': 'Nenhum'} )
+        dados = dados_extraidos.get(nome_base, {'contorno': '#fefefe', 'preenchimento': 'Nenhum'})
         cor_contorno = dados.get('contorno', '#fefefe').lower().strip()
         
         if cor_contorno not in REGRAS_MATERIAIS:
@@ -270,7 +363,6 @@ def mapear_e_ordenar_elementos(objetos_importados, dados_extraidos):
     return elementos_mapeados
 
 def aplicar_materiais_e_empilhar(elementos_mapeados, imagens_disponiveis, usar_verniz):
-    """Aplica materiais reutilizando os existentes no .blend para otimizar o tempo de render."""
     print(f">>> Aplicando materiais, texturas e extrusões...", flush=True)
     idx_imagem_global = 0
     suporte_dos_objetos = {}
@@ -336,78 +428,98 @@ def aplicar_materiais_e_empilhar(elementos_mapeados, imagens_disponiveis, usar_v
                 obj.modifiers.remove(mod_solidify)
                 obj.data = mesh_eval
                 bpy.context.view_layer.update()
+            pass
+            
+            # --- APLICA A ESCALA PARA A TEXTURA PROCEDURAL FICAR NA PROPORÇÃO CORRETA ---
+            bpy.ops.object.select_all(action='DESELECT')
+            obj.select_set(True)
+            bpy.context.view_layer.objects.active = obj
+            bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
         
-        # OTIMIZAÇÃO DE MATERIAIS: Tenta reutilizar materiais existentes no Blender
-        obj.data.materials.clear()
+        # --- OBTENÇÃO DA COR DE PREENCHIMENTO REAL DE MDF ---
         preenchimento_val = dados.get('preenchimento', 'Nenhum')
-        nome_mat_unico = f"Mat_{regra['nome_material']}_{preenchimento_val.replace('#', '')}"
+        if not preenchimento_val or preenchimento_val == 'Nenhum' or preenchimento_val.lower() == '#ffffff':
+            # Caso o preenchimento seja nulo, ausente ou branco por engano, aplica a cor real do MDF madeira
+            if tipo_material in ['MDF', 'MDF_COSTAS']:
+                cor_preenchimento_hex = COR_PADRAO_MDF_HEX
+            else:
+                cor_preenchimento_hex = '#000000'
+        else:
+            cor_preenchimento_hex = preenchimento_val
+
+        cor_svg_rgba = hex_para_rgba(cor_preenchimento_hex)
+
+        obj.data.materials.clear()
+        nome_mat_unico = f"Mat_{regra['nome_material']}_{cor_preenchimento_hex.replace('#', '')}"
         if tipo_material == 'ADESIVO': 
             nome_mat_unico = f"Mat_Adesivo_{nome_base}"
 
         mat = bpy.data.materials.get(nome_mat_unico)
         
-        if not mat:
-            mat = bpy.data.materials.new(name=nome_mat_unico)
-            mat.use_nodes = True
-            nodes, links = mat.node_tree.nodes, mat.node_tree.links
+        if tipo_material in ['MDF', 'MDF_COSTAS']:
+            if not mat:
+                mat = bpy.data.materials.new(name=nome_mat_unico)
+            aplicar_textura_mdf_procedural(mat, cor_svg_rgba)
+        else:
+            if not mat:
+                mat = bpy.data.materials.new(name=nome_mat_unico)
+                mat.use_nodes = True
+                nodes, links = mat.node_tree.nodes, mat.node_tree.links
 
-            if tipo_material == 'ACRILICO':
-                node_principled = nodes.get("Principled BSDF")
-                if node_principled: nodes.remove(node_principled)
-                bsdf = nodes.new('ShaderNodeBsdfGlossy')
-                bsdf.location = (10, 300)
-                node_output = nodes.get("Material Output")
-                links.new(bsdf.outputs['BSDF'], node_output.inputs['Surface'])
-                pino_cor = 'Color' 
-            else:
+                if tipo_material == 'ACRILICO':
+                    node_principled = nodes.get("Principled BSDF")
+                    if node_principled: nodes.remove(node_principled)
+                    bsdf = nodes.new('ShaderNodeBsdfGlossy')
+                    bsdf.location = (10, 300)
+                    node_output = nodes.get("Material Output")
+                    links.new(bsdf.outputs['BSDF'], node_output.inputs['Surface'])
+                    pino_cor = 'Color' 
+                else:
+                    bsdf = nodes.get("Principled BSDF")
+                    pino_cor = 'Base Color' 
+
+                if tipo_material == 'ADESIVO' and imagens_disponiveis:
+                    caminho_imagem = imagens_disponiveis[idx_imagem_global % len(imagens_disponiveis)]
+                    idx_imagem_global += 1 
+                    img_nome_arquivo = os.path.basename(caminho_imagem)
+                    img_blender = bpy.data.images.get(img_nome_arquivo) or (bpy.data.images.load(filepath=caminho_imagem) if os.path.exists(caminho_imagem) else None)
+                    
+                    tex_node = nodes.new('ShaderNodeTexImage')
+                    if img_blender: tex_node.image = img_blender
+                    tex_node.location = (-600, 300)
+
+                    hsv_node = nodes.new(type="ShaderNodeHueSaturation")
+                    hsv_node.location = (-300, 300)
+                    hsv_node.inputs['Value'].default_value = FATOR_ESCURECIMENTO_ADESIVO
+                    
+                    links.new(tex_node.outputs['Color'], hsv_node.inputs['Color'])
+                    links.new(hsv_node.outputs['Color'], bsdf.inputs[pino_cor])
+                else:
+                    if preenchimento_val != 'Nenhum':
+                        if tipo_material == 'ADESIVO':
+                            cor_escurecida = (cor_svg_rgba[0]*FATOR_ESCURECIMENTO_ADESIVO, cor_svg_rgba[1]*FATOR_ESCURECIMENTO_ADESIVO, cor_svg_rgba[2]*FATOR_ESCURECIMENTO_ADESIVO, cor_svg_rgba[3])
+                            bsdf.inputs[pino_cor].default_value = cor_escurecida
+                        else:
+                            bsdf.inputs[pino_cor].default_value = cor_svg_rgba
+
+            if mat and mat.use_nodes:
+                nodes = mat.node_tree.nodes
                 bsdf = nodes.get("Principled BSDF")
-                pino_cor = 'Base Color' 
+                if tipo_material == 'ACRILICO' and not bsdf:
+                    bsdf = next((n for n in nodes if n.type == 'BSDF_GLOSSY'), None)
 
-            cor_svg = hex_para_rgba(preenchimento_val) if preenchimento_val != 'Nenhum' else (0.8, 0.6, 0.4, 1.0)
+                if bsdf:
+                    roughness_final = 0.01 if (usar_verniz and tipo_material in ['MDF', 'MDF_COSTAS', 'BASE']) else regra['roughness']
+                    if 'Roughness' in bsdf.inputs: 
+                        bsdf.inputs['Roughness'].default_value = roughness_final
 
-            if tipo_material == 'ADESIVO' and imagens_disponiveis:
-                caminho_imagem = imagens_disponiveis[idx_imagem_global % len(imagens_disponiveis)]
-                idx_imagem_global += 1 
-                img_nome_arquivo = os.path.basename(caminho_imagem)
-                img_blender = bpy.data.images.get(img_nome_arquivo) or (bpy.data.images.load(filepath=caminho_imagem) if os.path.exists(caminho_imagem) else None)
-                
-                tex_node = nodes.new('ShaderNodeTexImage')
-                if img_blender: tex_node.image = img_blender
-                tex_node.location = (-600, 300)
-
-                hsv_node = nodes.new(type="ShaderNodeHueSaturation")
-                hsv_node.location = (-300, 300)
-                hsv_node.inputs['Value'].default_value = FATOR_ESCURECIMENTO_ADESIVO
-                
-                links.new(tex_node.outputs['Color'], hsv_node.inputs['Color'])
-                links.new(hsv_node.outputs['Color'], bsdf.inputs[pino_cor])
-            else:
-                if preenchimento_val != 'Nenhum':
-                    if tipo_material == 'ADESIVO':
-                        cor_escurecida = (cor_svg[0]*FATOR_ESCURECIMENTO_ADESIVO, cor_svg[1]*FATOR_ESCURECIMENTO_ADESIVO, cor_svg[2]*FATOR_ESCURECIMENTO_ADESIVO, cor_svg[3])
-                        bsdf.inputs[pino_cor].default_value = cor_escurecida
-                    else:
-                        bsdf.inputs[pino_cor].default_value = cor_svg
-
-        # Atualiza propriedades físicas em materiais novos ou reutilizados
-        if mat and mat.use_nodes:
-            nodes = mat.node_tree.nodes
-            bsdf = nodes.get("Principled BSDF")
-            if tipo_material == 'ACRILICO' and not bsdf:
-                bsdf = next((n for n in nodes if n.type == 'BSDF_GLOSSY'), None)
-
-            if bsdf:
-                roughness_final = 0.01 if (usar_verniz and tipo_material in ['MDF', 'MDF_COSTAS', 'BASE']) else regra['roughness']
-                if 'Roughness' in bsdf.inputs: 
-                    bsdf.inputs['Roughness'].default_value = roughness_final
-
-                if tipo_material != 'ACRILICO':
-                    if 'Transmission Weight' in bsdf.inputs: 
-                        bsdf.inputs['Transmission Weight'].default_value = regra.get('transmission', 0.0)
-                    elif 'Transmission' in bsdf.inputs: 
-                        bsdf.inputs['Transmission'].default_value = regra.get('transmission', 0.0)
-                    if 'IOR' in bsdf.inputs and 'ior' in regra: 
-                        bsdf.inputs['IOR'].default_value = regra['ior']
+                    if tipo_material != 'ACRILICO':
+                        if 'Transmission Weight' in bsdf.inputs: 
+                            bsdf.inputs['Transmission Weight'].default_value = regra.get('transmission', 0.0)
+                        elif 'Transmission' in bsdf.inputs: 
+                            bsdf.inputs['Transmission'].default_value = regra.get('transmission', 0.0)
+                        if 'IOR' in bsdf.inputs and 'ior' in regra: 
+                            bsdf.inputs['IOR'].default_value = regra['ior']
 
         obj.data.materials.append(mat)
         bpy.context.view_layer.update()
@@ -415,7 +527,6 @@ def aplicar_materiais_e_empilhar(elementos_mapeados, imagens_disponiveis, usar_v
     return suporte_dos_objetos
 
 def erguer_corpo_principal_do_trofeu(elementos_mapeados, suporte_dos_objetos):
-    """Identifica quais peças não são base e as rotaciona 90 graus para a vertical."""
     def esta_apoiado_na_base(obj_name):
         atual = obj_name
         visitados = set() 
@@ -484,7 +595,6 @@ def erguer_corpo_principal_do_trofeu(elementos_mapeados, suporte_dos_objetos):
     return pecas_corpo
 
 def processar_mdf_costas(elementos_mapeados, pecas_corpo, suporte_dos_objetos):
-    """Posiciona o MDF Costas e a Pista de forma plana na traseira do troféu."""
     for item in elementos_mapeados:
         if item['tipo_material'] == 'MDF_COSTAS':
             obj_costas = item['obj']
@@ -532,7 +642,6 @@ def processar_mdf_costas(elementos_mapeados, pecas_corpo, suporte_dos_objetos):
                         bpy.context.view_layer.update()
 
 def processar_resina_3d(elementos_mapeados, suporte_dos_objetos, caminho_modelo_resina, objetos_importados):
-    """Importa o modelo 3D da resina, ajusta material e posiciona dinamicamente sobre o suporte correto."""
     dados_resina_pendente = next((i for i in elementos_mapeados if i['tipo_material'] == 'RESINA_AREA'), None)
 
     if not dados_resina_pendente or not caminho_modelo_resina or not os.path.exists(caminho_modelo_resina):
@@ -632,7 +741,7 @@ def processar_resina_3d(elementos_mapeados, suporte_dos_objetos, caminho_modelo_
         correcao_frente = 0.0
 
         if eh_na_base:
-            resina_3d_obj.rotation_euler = (math.radians(89.5), 0.0, rot_z_original + correcao_frente)
+            resina_3d_obj.rotation_euler = (0.0, 0.0, -rot_z_original + correcao_frente)
             bpy.context.view_layer.update()
 
             cantos_kart = [resina_3d_obj.matrix_world @ mathutils.Vector(v) for v in resina_3d_obj.bound_box]
@@ -655,7 +764,7 @@ def processar_resina_3d(elementos_mapeados, suporte_dos_objetos, caminho_modelo_
             resina_3d_obj.location.z += (max_z_sup - min_z_res) + 0.001
 
         else:
-            resina_3d_obj.rotation_euler = (math.radians(90), 0.0, rot_z_original + correcao_frente)
+            resina_3d_obj.rotation_euler = (math.radians(90), 0.0, -rot_z_original + correcao_frente)
             bpy.context.view_layer.update()
 
             cantos_kart = [resina_3d_obj.matrix_world @ mathutils.Vector(v) for v in resina_3d_obj.bound_box]
@@ -685,18 +794,17 @@ def processar_resina_3d(elementos_mapeados, suporte_dos_objetos, caminho_modelo_
             bpy.data.objects.remove(obj_marcado_svg, do_unlink=True)
     except (ReferenceError, KeyError): pass
 
-def configurar_cameras(objetos_importados):
-    """Posiciona iluminação e câmeras automaticamente focando estritamente nas malhas do troféu e da resina."""
+def configurar_cameras(objetos_importados, cameras_para_renderizar=None):
     objetos_validos_cena = []
     
+    # Filtra estritamente apenas as malhas ativas do troféu
     for obj in objetos_importados:
         try:
             if obj and hasattr(obj, "name") and obj.name in bpy.data.objects and obj.type == 'MESH':
                 nome_lc = obj.name.lower()
                 if not any(ign in nome_lc for ign in ["estudio", "chao", "ground", "studio", "wall", "fundo", "cenario"]):
                     objetos_validos_cena.append(obj)
-        except (ReferenceError, RuntimeError):
-            continue
+        except (ReferenceError, RuntimeError): continue
 
     if not objetos_validos_cena:
         for obj in bpy.context.scene.objects:
@@ -705,8 +813,7 @@ def configurar_cameras(objetos_importados):
                     nome_lc = obj.name.lower()
                     if not any(ign in nome_lc for ign in ["estudio", "chao", "ground", "studio", "wall", "fundo", "cenario"]):
                         objetos_validos_cena.append(obj)
-            except (ReferenceError, RuntimeError):
-                continue
+            except (ReferenceError, RuntimeError): continue
 
     if not objetos_validos_cena:
         print("⚠️ Nenhuma malha do troféu encontrada para enquadramento das câmeras.", flush=True)
@@ -731,8 +838,7 @@ def configurar_cameras(objetos_importados):
                 max_y = max(max_y, coord.y)
                 min_z = min(min_z, coord.z)
                 max_z = max(max_z, coord.z)
-        except (ReferenceError, RuntimeError):
-            continue
+        except (ReferenceError, RuntimeError): continue
 
     if min_x == float('inf') or max_z == float('-inf'):
         print("⚠️ Não foi possível calcular o centro dos objetos.", flush=True)
@@ -785,12 +891,21 @@ def configurar_cameras(objetos_importados):
     )
 
     bpy.context.scene.camera = cam_principal
-    print(f"📷 Câmeras enquadradas com sucesso! Distância calculada do troféu: {distancia_base:.2f}m", flush=True)
+    todas_cameras_criadas = ["Camera_Principal", "Camera_Esquerda", "Camera_Direita"]
 
-    return ["Camera_Principal", "Camera_Esquerda", "Camera_Direita"]
+    if cameras_para_renderizar:
+        if isinstance(cameras_para_renderizar, str):
+            if cameras_para_renderizar.strip().lower() in ['todas', 'all', '']:
+                return todas_cameras_criadas
+            else:
+                lista_desejada = [c.strip() for c in cameras_para_renderizar.split(',')]
+                return [c for c in todas_cameras_criadas if c in lista_desejada]
+        elif isinstance(cameras_para_renderizar, (list, tuple)):
+            return [c for c in todas_cameras_criadas if c in cameras_para_renderizar]
+
+    return todas_cameras_criadas
 
 def renderizar_cena(cameras_nomes, pasta_saida_renders, cycles_samples):
-    """Configura o Cycles e roda os Renders para as câmeras selecionadas."""
     pasta_dest = pasta_saida_renders
     if not os.path.exists(pasta_dest): os.makedirs(pasta_dest)
     
@@ -814,7 +929,6 @@ def renderizar_cena(cameras_nomes, pasta_saida_renders, cycles_samples):
         scene.render.filepath = os.path.join(pasta_dest, f"{nome_cam}.png")
         print(f">>> Renderizando câmera: {nome_cam} via Cycles...", flush=True)
         
-        import time
         parar_thread = threading.Event()
         def atualizar_progresso_fluido():
             atual = 0
@@ -847,7 +961,6 @@ def processar_svg_no_blender(
     caminho_modelo_resina="",
     cameras_para_renderizar=None
 ):
-    
     carregar_estudio_e_hdri(caminho_blend)
     caminho_temp, dados_extraidos, imagens_disponiveis = analisar_e_preparar_svg(caminho_svg)
     if not caminho_temp: return
@@ -859,28 +972,12 @@ def processar_svg_no_blender(
     processar_mdf_costas(elementos_mapeados, pecas_corpo, suporte_dos_objetos)
     processar_resina_3d(elementos_mapeados, suporte_dos_objetos, caminho_modelo_resina, objetos_importados)
 
-    cameras_nomes = configurar_cameras(objetos_importados)
-
-    # --- FILTRAGEM DAS CÂMERAS ---
-    if cameras_para_renderizar:
-        if isinstance(cameras_para_renderizar, str):
-            if cameras_para_renderizar.strip().lower() in ['todas', 'all', '']:
-                cameras_filtradas = cameras_nomes
-            else:
-                lista_desejada = [c.strip() for c in cameras_para_renderizar.split(',')]
-                cameras_filtradas = [c for c in cameras_nomes if c in lista_desejada]
-        elif isinstance(cameras_para_renderizar, (list, tuple)):
-            cameras_filtradas = [c for c in cameras_nomes if c in cameras_para_renderizar]
-        else:
-            cameras_filtradas = cameras_nomes
-    else:
-        cameras_filtradas = cameras_nomes
+    cameras_filtradas = configurar_cameras(objetos_importados, cameras_para_renderizar)
 
     if renderizar and pasta_saida_renders and cameras_filtradas:
         renderizar_cena(cameras_filtradas, pasta_saida_renders, cycles_samples)
     else:
         print(">>> Modo interativo ativo ou nenhuma câmera válida foi selecionada.", flush=True)
-
 
 if __name__ == "__main__":
     if "--" in sys.argv:
@@ -906,7 +1003,6 @@ if __name__ == "__main__":
         caminho_modelo_resina = ""
         if len(argv) > 7: caminho_modelo_resina = argv[7]
 
-        # 8º Argumento Opcional: Câmeras a renderizar (Ex: "Camera_Principal" ou "Camera_Principal,Camera_Esquerda")
         cameras_para_renderizar = None
         if len(argv) > 8 and argv[8].strip():
             cameras_para_renderizar = argv[8]
