@@ -125,8 +125,8 @@ def aplicar_textura_mdf_procedural(mat, cor_preenchimento_rgba):
     # 3. Ruído Procedural (Granulação de Fibra)
     noise_node = nodes.new('ShaderNodeTexNoise')
     noise_node.location = (-750, 100)
-    noise_node.inputs['Scale'].default_value = 60.0
-    noise_node.inputs['Detail'].default_value = 15.0
+    noise_node.inputs['Scale'].default_value = 1.0
+    noise_node.inputs['Detail'].default_value = 2.0
     noise_node.inputs['Roughness'].default_value = 0.85
     noise_node.inputs['Distortion'].default_value = 0.3
     links.new(mapping.outputs['Vector'], noise_node.inputs['Vector'])
@@ -137,10 +137,10 @@ def aplicar_textura_mdf_procedural(mat, cor_preenchimento_rgba):
     
     # Define o escurecimento das fibras sem estourar no branco
     color_ramp.color_ramp.elements[0].position = 0.10
-    color_ramp.color_ramp.elements[0].color = (0.20, 0.20, 0.20, 1.0) # Variação mais escura (20% cinza)
+    color_ramp.color_ramp.elements[0].color = (0.40, 0.40, 0.40, 1.0) # Variação mais escura (20% cinza)
     
     color_ramp.color_ramp.elements[1].position = 0.80
-    color_ramp.color_ramp.elements[1].color = (0.75, 0.75, 0.75, 1.0) # Variação máxima controlada (75% cinza)
+    color_ramp.color_ramp.elements[1].color = (0.10, 0.10, 0.10, 1.0) # Variação máxima controlada (75% cinza)
     
     links.new(noise_node.outputs['Fac'], color_ramp.inputs['Fac'])
 
@@ -167,7 +167,7 @@ def aplicar_textura_mdf_procedural(mat, cor_preenchimento_rgba):
     bump_node.inputs['Distance'].default_value = 0.002
     links.new(noise_node.outputs['Fac'], bump_node.inputs['Height'])
     links.new(bump_node.outputs['Normal'], bsdf.inputs['Normal'])
-    
+
 # ==============================================================================
 # 3. MÓDULOS DE PROCESSAMENTO
 # ==============================================================================
