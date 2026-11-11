@@ -19,10 +19,10 @@ REGRAS_MATERIAIS = {
     '#fff212': { 'tipo': 'ACRILICO', 'nome_material': 'Acrilico_transparente', 'extrusao': 0.001, 'roughness': 0.001, 'transmission': 1.0, 'ior': 2 },
         
     # MDFs
-    '#fefefe': { 'tipo': 'MDF', 'nome_material': 'MDF_3mm', 'extrusao': 0.003, 'roughness': 0.55, 'transmission': 0.03, 'ior': 1.10},
-    '#e6e7e8': { 'tipo': 'MDF', 'nome_material': 'MDF_6mm', 'extrusao': 0.006, 'roughness': 0.55, 'transmission': 0.03, 'ior': 1.10},
-    '#d2d3d5': { 'tipo': 'MDF', 'nome_material': 'MDF_9mm', 'extrusao': 0.009, 'roughness': 0.55, 'transmission': 0.03, 'ior': 1.10},
-    '#373435': { 'tipo': 'PLOTTER', 'nome_material': 'PLOTTER', 'extrusao': 0.0001, 'roughness': 0.05, 'transmission': 0.03, 'ior': 1.10},
+    '#fefefe': { 'tipo': 'MDF', 'nome_material': 'MDF_3mm', 'extrusao': 0.003, 'roughness': 0.55, 'transmission': 0.03, 'ior': 1.2},
+    '#e6e7e8': { 'tipo': 'MDF', 'nome_material': 'MDF_6mm', 'extrusao': 0.006, 'roughness': 0.55, 'transmission': 0.03, 'ior': 1.2},
+    '#d2d3d5': { 'tipo': 'MDF', 'nome_material': 'MDF_9mm', 'extrusao': 0.009, 'roughness': 0.55, 'transmission': 0.03, 'ior': 1.2},
+    '#373435': { 'tipo': 'PLOTTER', 'nome_material': 'PLOTTER', 'extrusao': 0.0001, 'roughness': 0.05, 'transmission': 0.03, 'ior': 1.2},
 
     # MDF COSTAS (permanece plano/deitado)
     '#00afef': { 'tipo': 'MDF_COSTAS', 'nome_material': 'MDF_Costas_3mm', 'extrusao': 0.003, 'roughness': 0.55, 'transmission': 0.2, 'ior': 1.4 },
@@ -110,7 +110,7 @@ def aplicar_textura_mdf_procedural(mat, cor_preenchimento_rgba):
     links.new(bsdf.outputs['BSDF'], output_node.inputs['Surface'])
 
     # O MDF cru possui superfície fosca e rugosa
-    bsdf.inputs['Roughness'].default_value = 0.75
+    #bsdf.inputs['Roughness'].default_value = 0.75
 
     # 2. Coordenadas de Textura 3D (Object Space)
     tex_coord = nodes.new('ShaderNodeTexCoord')
@@ -125,10 +125,11 @@ def aplicar_textura_mdf_procedural(mat, cor_preenchimento_rgba):
     # 3. Ruído Procedural (Granulação de Fibra)
     noise_node = nodes.new('ShaderNodeTexNoise')
     noise_node.location = (-750, 100)
-    noise_node.inputs['Scale'].default_value = 1.0
-    noise_node.inputs['Detail'].default_value = 2.0
-    noise_node.inputs['Roughness'].default_value = 0.85
-    noise_node.inputs['Distortion'].default_value = 0.3
+    noise_node.inputs['Scale'].default_value = 15.0
+    noise_node.inputs['Detail'].default_value = 1.0
+    noise_node.inputs['Roughness'].default_value = 0.9
+    noise_node.inputs['Lacunarity'].default_value = 3.8
+    noise_node.inputs['Distortion'].default_value = 0.4
     links.new(mapping.outputs['Vector'], noise_node.inputs['Vector'])
 
     # 4. ColorRamp em Escala de Cinza Escura (Controle estrito de luminosidade)
@@ -137,10 +138,10 @@ def aplicar_textura_mdf_procedural(mat, cor_preenchimento_rgba):
     
     # Define o escurecimento das fibras sem estourar no branco
     color_ramp.color_ramp.elements[0].position = 0.10
-    color_ramp.color_ramp.elements[0].color = (0.40, 0.40, 0.40, 1.0) # Variação mais escura (20% cinza)
+    color_ramp.color_ramp.elements[0].color = (0.80, 0.80, 0.80, 1.0) # Variação mais escura (20% cinza)
     
     color_ramp.color_ramp.elements[1].position = 0.80
-    color_ramp.color_ramp.elements[1].color = (0.10, 0.10, 0.10, 1.0) # Variação máxima controlada (75% cinza)
+    color_ramp.color_ramp.elements[1].color = (0.20, 0.20, 0.20, 1.0) # Variação máxima controlada (75% cinza)
     
     links.new(noise_node.outputs['Fac'], color_ramp.inputs['Fac'])
 
@@ -155,7 +156,7 @@ def aplicar_textura_mdf_procedural(mat, cor_preenchimento_rgba):
     input_b = mix_node.inputs.get('B', mix_node.inputs[7])
     saida_mix = mix_node.outputs.get('Result', mix_node.outputs[2])
 
-    input_fac.default_value = 0.90
+    input_fac.default_value = 1.0
     links.new(color_ramp.outputs['Color'], input_a)
     input_b.default_value = cor_preenchimento_rgba
     links.new(saida_mix, bsdf.inputs['Base Color'])
@@ -456,7 +457,7 @@ def aplicar_materiais_e_empilhar(elementos_mapeados, imagens_disponiveis, usar_v
 
         mat = bpy.data.materials.get(nome_mat_unico)
         
-        if tipo_material in ['MDF', 'MDF_COSTAS']:
+        if tipo_material in ['MDF', 'MDF_COSTAS','BASE']:
             if not mat:
                 mat = bpy.data.materials.new(name=nome_mat_unico)
             aplicar_textura_mdf_procedural(mat, cor_svg_rgba)
