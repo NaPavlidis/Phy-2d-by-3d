@@ -31,13 +31,13 @@ REGRAS_MATERIAIS = {
     '#00a859': { 'tipo': 'RESINA_AREA', 'nome_material': 'Area_Resina', 'extrusao': 0.0, 'roughness': 0.2 , 'transmission': 0.5, 'ior': 1.10 },
 
     # BASES
-    "#f58634": { 'tipo': 'BASE', 'nome_material': 'Base_3MM', 'extrusao': 0.003, 'roughness': 0.08, 'transmission': 0.02, 'ior': 1.03},
-    "#3e4095": { 'tipo': 'BASE', 'nome_material': 'Base_6MM', 'extrusao': 0.009, 'roughness': 0.08, 'transmission': 0.02, 'ior': 1.03},
-    "#f7adaf": { 'tipo': 'BASE', 'nome_material': 'Base_9MM', 'extrusao': 0.015, 'roughness': 0.08, 'transmission': 0.02, 'ior': 1.03},
-    "#84716b": { 'tipo': 'BASE', 'nome_material': 'Base_12MM', 'extrusao': 0.025, 'roughness': 0.08, 'transmission': 0.02, 'ior': 1.03},    
+    "#f58634": { 'tipo': 'BASE', 'nome_material': 'Base_3MM', 'extrusao': 0.003, 'roughness': 0.55, 'transmission': 0.02, 'ior': 1.2},
+    "#3e4095": { 'tipo': 'BASE', 'nome_material': 'Base_6MM', 'extrusao': 0.009, 'roughness': 0.55, 'transmission': 0.02, 'ior': 1.2},
+    "#f7adaf": { 'tipo': 'BASE', 'nome_material': 'Base_9MM', 'extrusao': 0.015, 'roughness': 0.55, 'transmission': 0.02, 'ior': 1.2},
+    "#84716b": { 'tipo': 'BASE', 'nome_material': 'Base_12MM', 'extrusao': 0.025, 'roughness': 0.55, 'transmission': 0.02, 'ior': 1.2},    
     
     # ADESIVOS
-    '#ec268f': { 'tipo': 'ADESIVO', 'nome_material': 'Adesivo_Padrao', 'extrusao': 0.0001, 'roughness': 0.04, 'transmission': 0.02, 'ior': 1.08 }
+    '#ec268f': { 'tipo': 'ADESIVO', 'nome_material': 'Adesivo_Padrao', 'extrusao': 0.0001, 'roughness': 0.043, 'transmission': 0.02, 'ior': 1.08 }
 }
 
 FATOR_ESCURECIMENTO_ADESIVO = 0.25
@@ -125,10 +125,10 @@ def aplicar_textura_mdf_procedural(mat, cor_preenchimento_rgba):
     # 3. Ruído Procedural (Granulação de Fibra)
     noise_node = nodes.new('ShaderNodeTexNoise')
     noise_node.location = (-750, 100)
-    noise_node.inputs['Scale'].default_value = 15.0
-    noise_node.inputs['Detail'].default_value = 1.0
-    noise_node.inputs['Roughness'].default_value = 0.9
-    noise_node.inputs['Lacunarity'].default_value = 3.8
+    noise_node.inputs['Scale'].default_value = 8.0
+    noise_node.inputs['Detail'].default_value = 1.1
+    noise_node.inputs['Roughness'].default_value = 1.0
+    noise_node.inputs['Lacunarity'].default_value = 3.5
     noise_node.inputs['Distortion'].default_value = 0.4
     links.new(mapping.outputs['Vector'], noise_node.inputs['Vector'])
 
@@ -164,7 +164,7 @@ def aplicar_textura_mdf_procedural(mat, cor_preenchimento_rgba):
     # 6. Relevo Tátil (Bump de Fibras)
     bump_node = nodes.new('ShaderNodeBump')
     bump_node.location = (-200, -200)
-    bump_node.inputs['Strength'].default_value = 0.40 # Intensifica as micro-sombras táticas
+    bump_node.inputs['Strength'].default_value = 0.45 # Intensifica as micro-sombras táticas
     bump_node.inputs['Distance'].default_value = 0.002
     links.new(noise_node.outputs['Fac'], bump_node.inputs['Height'])
     links.new(bump_node.outputs['Normal'], bsdf.inputs['Normal'])
@@ -363,7 +363,7 @@ def mapear_e_ordenar_elementos(objetos_importados, dados_extraidos):
     elementos_mapeados.sort(key=lambda x: (0 if x['eh_base'] else 1, x['indice_svg']))
     return elementos_mapeados
 
-def aplicar_materiais_e_empilhar(elementos_mapeados, imagens_disponiveis, usar_verniz):
+def aplicar_materiais_e_empilhar(elementos_mapeados, imagens_disponiveis, usar_verniz,usar_textura):
     print(f">>> Aplicando materiais, texturas e extrusões...", flush=True)
     idx_imagem_global = 0
     suporte_dos_objetos = {}
@@ -375,6 +375,7 @@ def aplicar_materiais_e_empilhar(elementos_mapeados, imagens_disponiveis, usar_v
         regra = item['regra']
         tipo_material = item['tipo_material']
 
+        # --- CÁLCULO DE EMPILHAMENTO E COLISÃO ---
         if tipo_material != 'MDF_COSTAS':
             min_x, max_x, min_y, max_y = obter_caixa_de_colisao(obj)
             pontos_de_teste = []
@@ -413,6 +414,8 @@ def aplicar_materiais_e_empilhar(elementos_mapeados, imagens_disponiveis, usar_v
         bpy.context.view_layer.update()
 
         if tipo_material == 'ADESIVO': criar_uv_perfeito(obj)
+        
+        # --- EXTRUSÃO ---
         if regra['extrusao'] > 0:
             mod_solidify = obj.modifiers.new(name="extrusao", type='SOLIDIFY')
             mod_solidify.thickness = regra['extrusao']
@@ -429,19 +432,17 @@ def aplicar_materiais_e_empilhar(elementos_mapeados, imagens_disponiveis, usar_v
                 obj.modifiers.remove(mod_solidify)
                 obj.data = mesh_eval
                 bpy.context.view_layer.update()
-            pass
             
-            # --- APLICA A ESCALA PARA A TEXTURA PROCEDURAL FICAR NA PROPORÇÃO CORRETA ---
+            # Garante que as coordenadas procedurais leiam a escala 1:1 real
             bpy.ops.object.select_all(action='DESELECT')
             obj.select_set(True)
             bpy.context.view_layer.objects.active = obj
             bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
         
-        # --- OBTENÇÃO DA COR DE PREENCHIMENTO REAL DE MDF ---
+        # --- OBTENÇÃO DA COR DE PREENCHIMENTO ---
         preenchimento_val = dados.get('preenchimento', 'Nenhum')
         if not preenchimento_val or preenchimento_val == 'Nenhum' or preenchimento_val.lower() == '#ffffff':
-            # Caso o preenchimento seja nulo, ausente ou branco por engano, aplica a cor real do MDF madeira
-            if tipo_material in ['MDF', 'MDF_COSTAS']:
+            if tipo_material in ['MDF', 'MDF_COSTAS','BASE']:
                 cor_preenchimento_hex = COR_PADRAO_MDF_HEX
             else:
                 cor_preenchimento_hex = '#000000'
@@ -457,7 +458,8 @@ def aplicar_materiais_e_empilhar(elementos_mapeados, imagens_disponiveis, usar_v
 
         mat = bpy.data.materials.get(nome_mat_unico)
         
-        if tipo_material in ['MDF', 'MDF_COSTAS','BASE']:
+        # --- CRIAÇÃO OU ATUALIZAÇÃO DO MATERIAL ---
+        if tipo_material in ['MDF', 'MDF_COSTAS', 'BASE'] and usar_textura:
             if not mat:
                 mat = bpy.data.materials.new(name=nome_mat_unico)
             aplicar_textura_mdf_procedural(mat, cor_svg_rgba)
@@ -503,24 +505,28 @@ def aplicar_materiais_e_empilhar(elementos_mapeados, imagens_disponiveis, usar_v
                         else:
                             bsdf.inputs[pino_cor].default_value = cor_svg_rgba
 
-            if mat and mat.use_nodes:
-                nodes = mat.node_tree.nodes
-                bsdf = nodes.get("Principled BSDF")
-                if tipo_material == 'ACRILICO' and not bsdf:
-                    bsdf = next((n for n in nodes if n.type == 'BSDF_GLOSSY'), None)
+        # --- APLICAÇÃO FORÇADA DE PROPRIEDADES FÍSICAS (ROUGHNESS, TRANSMISSION E IOR) ---
+        # Executado SEMPRE fora do "if not mat", garantindo que materiais existentes recebam as regras ativas
+        if mat and mat.use_nodes:
+            nodes = mat.node_tree.nodes
+            bsdf = nodes.get("Principled BSDF") or next((n for n in nodes if n.type == 'BSDF_GLOSSY'), None)
 
-                if bsdf:
-                    roughness_final = 0.01 if (usar_verniz and tipo_material in ['MDF', 'MDF_COSTAS', 'BASE']) else regra['roughness']
-                    if 'Roughness' in bsdf.inputs: 
-                        bsdf.inputs['Roughness'].default_value = roughness_final
+            if bsdf:
+                # 1. Ajuste de Roughness (com suporte a Verniz no MDF/Base)
+                roughness_final = 0.01 if (usar_verniz and tipo_material in ['MDF', 'MDF_COSTAS', 'BASE']) else regra.get('roughness', 0.5)
+                if 'Roughness' in bsdf.inputs: 
+                    bsdf.inputs['Roughness'].default_value = roughness_final
 
-                    if tipo_material != 'ACRILICO':
-                        if 'Transmission Weight' in bsdf.inputs: 
-                            bsdf.inputs['Transmission Weight'].default_value = regra.get('transmission', 0.0)
-                        elif 'Transmission' in bsdf.inputs: 
-                            bsdf.inputs['Transmission'].default_value = regra.get('transmission', 0.0)
-                        if 'IOR' in bsdf.inputs and 'ior' in regra: 
-                            bsdf.inputs['IOR'].default_value = regra['ior']
+                # 2. Ajuste de Transmission (apenas no Principled BSDF)
+                if tipo_material != 'ACRILICO':
+                    if 'Transmission Weight' in bsdf.inputs: 
+                        bsdf.inputs['Transmission Weight'].default_value = regra.get('transmission', 0.0)
+                    elif 'Transmission' in bsdf.inputs: 
+                        bsdf.inputs['Transmission'].default_value = regra.get('transmission', 0.0)
+
+                # 3. Ajuste de IOR (Índice de Refração)
+                if 'IOR' in bsdf.inputs and 'ior' in regra: 
+                    bsdf.inputs['IOR'].default_value = regra['ior']
 
         obj.data.materials.append(mat)
         bpy.context.view_layer.update()
@@ -968,7 +974,7 @@ def processar_svg_no_blender(
     
     objetos_importados = importar_e_converter_svg(caminho_temp)
     elementos_mapeados = mapear_e_ordenar_elementos(objetos_importados, dados_extraidos)
-    suporte_dos_objetos = aplicar_materiais_e_empilhar(elementos_mapeados, imagens_disponiveis, usar_verniz)
+    suporte_dos_objetos = aplicar_materiais_e_empilhar(elementos_mapeados, imagens_disponiveis, usar_verniz,usar_textura)
     pecas_corpo = erguer_corpo_principal_do_trofeu(elementos_mapeados, suporte_dos_objetos)
     processar_mdf_costas(elementos_mapeados, pecas_corpo, suporte_dos_objetos)
     processar_resina_3d(elementos_mapeados, suporte_dos_objetos, caminho_modelo_resina, objetos_importados)
